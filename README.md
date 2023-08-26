@@ -1,6 +1,5 @@
 # Prepare files from offset calculation for MintPy processing"
-
-[Ariane Mueting](mueting@uni-potsdam.de) and [Bodo Bookhagen](bodo.bookhagen@uni-potsdam.de)
+Authors: **Ariane Mueting** and **Bodo Bookhagen**
 
 # Setup Computing Environment
 The steps described below depend on mintpy and other packages. These can be installed with conda:
@@ -25,7 +24,7 @@ pip install install numba-progress
 You will need to set the PATH to the directory containing the python files for computing the confidence intervals:
 ```bash
 export PYTHONPATH=$PYTHONPATH:/home/bodo/Dropbox/Argentina/Planet2mintpy
-
+```
 
 # Preparing dx, dy offset files from AMES for use with Mintpy
 
