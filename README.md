@@ -1,15 +1,6 @@
----
-title: "Prepare files from offset calculation for MintPy processing"
-subtitle: "Step-by-Step processing for AOI3"
-date: "Aug-26 2023"
-author: "[Ariane Mueting](mueting@uni-potsdam.de) and [Bodo Bookhagen](bodo.bookhagen@uni-potsdam.de)"
-titlepage: false
-toc-own-page: false
-disable-header-and-footer: false
-footnotes-pretty: true
-listings-disable-line-numbers: true
-lang: "en"
-...
+# Prepare files from offset calculation for MintPy processing"
+
+[Ariane Mueting](mueting@uni-potsdam.de) and [Bodo Bookhagen](bodo.bookhagen@uni-potsdam.de)
 
 # Setup Computing Environment
 The steps described below depend on mintpy and other packages. These can be installed with conda:
