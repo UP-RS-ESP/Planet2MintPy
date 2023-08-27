@@ -80,6 +80,7 @@ if __name__ == '__main__':
     # args.rg_ts_file = 'timeseriesRg_var.h5'
     # args.mask_file = 'aoi4_var_velocity_mask.h5'
     # args.HDF_outfile = 'aoi4_var_velocity_mask_ts.h5'
+    # args.npy_outfile='aoi4_var_velocity_mask_ts.npy'
     # args.out_pngfname='aoi4_var_velocity_mask_ts_velocity.png'
 
     args.atr = readfile.read_attribute(args.az_ts_file)
@@ -169,6 +170,7 @@ if __name__ == '__main__':
     # fig.suptitle('AOI4: Cumulative TS and linear monthly interpolation from inversion with weights', fontsize=16)
     # fig.tight_layout()
 
+    print('calculate velocity from linearily interpolated offset values')
     # use interpolated values to calculate velocity and direction
     v_mag = np.empty((tsamples_monthly.shape[0], nre), dtype=np.float32)
     v_mag.fill(np.nan)
@@ -219,6 +221,9 @@ if __name__ == '__main__':
     date_list.append(base)
     for i in range(1,tsamples_monthly.shape[0]):
         date_list.append(base + datetime.timedelta(days=tsamples_monthly[i]))
+
+    # store only time steps that contain actual measurements
+    # np.cumsum(delta_day_ar)
     # store mean and statistics into pandas HDF file
     #not storing original value, but only interpolated values
     # vdata = np.c_[np.nanmean(tsamples_monthly, az_data_cum, axis=1), np.nanstd(az_data_cum, axis=1),
@@ -239,14 +244,18 @@ if __name__ == '__main__':
 
     fig, ax = plt.subplots(1, 3, figsize = (16, 8), dpi=300)
     ax[0].errorbar(vel_mag_dir_df.index, vel_mag_dir_df.dx_mean, yerr=vel_mag_dir_df.dx_std, color='navy', lw=0.5)
-    ax[0].plot(vel_mag_dir_df.index, vel_mag_dir_df.dx_mean, 'k', lw=2)
+    ax[0].plot(vel_mag_dir_df.index, vel_mag_dir_df.dx_mean, 'k', lw=2, label='linear interpolation')
+    ax[0].plot(pd.to_datetime(dates, format='%Y%m%d'), np.nanmean(rg_data_cum, axis=1), 'x', color='darkred', label='raw rg data')
     ax[0].grid()
+    ax[0].legend()
     ax[0].set_ylabel("Cumulative displacement dx [pix]")
     ax[0].set_xlabel("Time")
     ax[1].errorbar(vel_mag_dir_df.index, vel_mag_dir_df.dy_mean, yerr=vel_mag_dir_df.dy_std, color='navy', lw=0.5)
-    ax[1].plot(vel_mag_dir_df.index, vel_mag_dir_df.dy_mean, 'k', lw=2)
+    ax[1].plot(vel_mag_dir_df.index, vel_mag_dir_df.dy_mean, 'k', lw=2, label='linear interpolation')
+    ax[1].plot(pd.to_datetime(dates, format='%Y%m%d'), np.nanmean(az_data_cum, axis=1), 'x', color='darkred', label='raw az data')
     ax[1].set_ylabel("Cumulative displacement dy [pix]")
     ax[1].grid()
+    ax[1].legend()
     ax[1].set_xlabel("Time")
     ax[2].errorbar(vel_mag_dir_df.index, vel_mag_dir_df.v_mean, yerr=vel_mag_dir_df.v_std, color='navy', lw=0.5)
     ax[2].plot(vel_mag_dir_df.index, vel_mag_dir_df.v_mean, 'k', lw=2)
@@ -274,9 +283,15 @@ if __name__ == '__main__':
         i = (di-d[0]).days//mintimedelta
         img[:, i], _ = np.histogram(v[j,:], b, density = True)
 
+    dtime_idx = np.empty(len(dates[1::]), dtype=np.int16)
+    for i in range(len(dates[1::])):
+        dtime_idx[i] = np.argmin(np.abs(pd.to_datetime(x)-pd.to_datetime(dates[i+1])))
+
+
     fig, ax = plt.subplots(1, 3, figsize = (19.2, 10.8), dpi=300)
     im0 = ax[0].pcolormesh(x, b, img, norm = LogNorm(), cmap = plt.cm.magma_r)
     ax[0].plot(vel_mag_dir_df.index, vel_mag_dir_df.v_mean, 'w', lw=2)
+    ax[0].plot(vel_mag_dir_df.index[dtime_idx], vel_mag_dir_df.v_mean[dtime_idx], 'wx', ms=5, lw=1)
     ax[0].xaxis.set_major_locator(matplotlib.dates.MonthLocator(interval=12))
     ax[0].xaxis.set_major_formatter(matplotlib.dates.DateFormatter('%Y'))
     ax[0].xaxis.set_minor_locator(matplotlib.dates.MonthLocator(interval=1))
@@ -298,6 +313,7 @@ if __name__ == '__main__':
 
     im1 = ax[1].pcolormesh(x, b, img2, norm = LogNorm(), cmap = plt.cm.viridis)
     ax[1].plot(vel_mag_dir_df.index, vel_mag_dir_df.dx_mean, 'k', lw=2)
+    ax[1].plot(vel_mag_dir_df.index[dtime_idx], vel_mag_dir_df.dx_mean[dtime_idx], 'wx', ms=5, lw=1)
     ax[1].xaxis.set_major_locator(matplotlib.dates.MonthLocator(interval=12))
     ax[1].xaxis.set_major_formatter(matplotlib.dates.DateFormatter('%Y'))
     ax[1].xaxis.set_minor_locator(matplotlib.dates.MonthLocator(interval=1))
@@ -319,6 +335,7 @@ if __name__ == '__main__':
 
     im2 = ax[2].pcolormesh(x, b, img3, norm = LogNorm(), cmap = plt.cm.viridis)
     ax[2].plot(vel_mag_dir_df.index, vel_mag_dir_df.dy_mean, 'k', lw=2)
+    ax[2].plot(vel_mag_dir_df.index[dtime_idx], vel_mag_dir_df.dy_mean[dtime_idx], 'wx', ms=5, lw=1)
     ax[2].xaxis.set_major_locator(matplotlib.dates.MonthLocator(interval=12))
     ax[2].xaxis.set_major_formatter(matplotlib.dates.DateFormatter('%Y'))
     ax[2].xaxis.set_minor_locator(matplotlib.dates.MonthLocator(interval=1))
