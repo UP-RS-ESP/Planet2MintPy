@@ -39,7 +39,7 @@ python /home/bodo/Dropbox/Argentina/Planet2mintpy/prep_Planet_stack.py \
           --template_file /raid/Planet_NWArg/PS2_aoi3/mintpy/PS2_aoi3_config.cfg \
           --h5_stack_fn /raid/Planet_NWArg/PS2_aoi3/mintpy/inputs/geo_offsetStack_aoi3.h5
 
-cd /raid/PS2_aoi3/mintpy/
+cd /raid/Planet_NWArg/PS2_aoi3/mintpy/
 ifgram_inversion.py /raid/Planet_NWArg/PS2_aoi3/mintpy/inputs/geo_offsetStack_aoi3.h5 \
     --skip-reference -i azimuthOffset -w var -c local --num-worker 20 --mem 16 -o timeseriesAz_var.h5 residualInvAz_var.h5 numInvOffsetAz_var.h5
 ifgram_inversion.py /raid/Planet_NWArg/PS2_aoi3/mintpy/inputs/geo_offsetStack_aoi3.h5 \
@@ -75,8 +75,8 @@ view.py aoi3_var_velocity.h5 vel_direction --vlim 0 360 -c hsv --nodisplay \
   --title "PS2 var: Velocity Direction" --save -o PS2_var_vel_direction.png
 
 # generate_mask.py aoi3_var_velocity.h5 vel_magnitude -m 1 -p 10000 -o aoi3_var_velocity_mask.h5
-#view.py aoi3_var_velocity.h5 vel_magnitude --mask aoi3_var_velocity_mask.h5 -u meters \
-#  --vlim 1 4 --nodisplay --title "PS2 var: Velocity Magnitude" --zero-mask --save -o PS2_var_vel_magnitude_mask.png
+# view.py aoi3_var_velocity.h5 vel_magnitude --mask aoi3_var_velocity_mask.h5 -u meters \
+#   --vlim 1 4 --nodisplay --title "PS2 var: Velocity Magnitude" --zero-mask --save -o PS2_var_vel_magnitude_mask.png
 
 # view.py aoi3_var_velocity.h5 vel_magnitude --mask aoi3_var_velocity_mask.h5 -u meters --vlim 3 6 --nodisplay --title "PS2 var: Velocity Magnitude" --zero-mask --save -o PS2_var_vel_magnitude_mask.png
 # view.py aoi3_var_velocity.h5 vel_direction --mask aoi3_var_velocity_mask.h5 --vlim 0 360 -c hsv --nodisplay --title "PS2 var: Velocity Direction" --save -o PS2_var_vel_direction_mask.png
