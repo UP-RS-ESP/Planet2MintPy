@@ -5,9 +5,10 @@
 # cd PS2_aoi3
 # mkdir disparity_maps
 # rsync -avz bodo@manaslu:/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi3/group[1-3]/disparity_maps/*_polyfit-F.tif disparity_maps
+rsync -avz bodo@manaslu:/raid-manaslu/amueting/PhD/Project3/DEM_Data/clips/CopernicusDEM_clip_aoi3.tif .
 mkdir /home/bodo/Dropbox/Argentina/aoi3/
 export PYTHONPATH=$PYTHONPATH:/home/bodo/Dropbox/Argentina/Planet2mintpy
-python /home/bodo/Dropbox/Argentina/Planet2mintpy/create_offset_confidence.py \
+python /home/bodo/Dropbox/soft/github/Planet2MintPy/create_offset_confidence.py \
            --kernel_size 9 \
            --offset_tif_fn "disparity_maps/*_polyfit-F.tif" \
            --area_name aoi3 \
@@ -15,7 +16,7 @@ python /home/bodo/Dropbox/Argentina/Planet2mintpy/create_offset_confidence.py \
            --confidence_tif_out_path confidence \
            --sensor PS2
 
-python /home/bodo/Dropbox/Argentina/Planet2mintpy/prep_Planet_metadata.py \
+python /home/bodo/Dropbox/soft/github/Planet2MintPy/prep_Planet_metadata.py \
   --offset_tif_fn "disparity_maps/*_polyfit-F.tif" \
   --dx_confidence_tif_fn "confidence/*_confidence.tif" \
   --dy_confidence_tif_fn "confidence/*_confidence.tif" \
@@ -27,10 +28,11 @@ sed -e 's#METAFILE_FN#/raid/Planet_NWArg/PS2_aoi3/PS2_aoi3_metadata.txt#' \
   -e 's#rgOffFile_FN#/raid/Planet_NWArg/PS2_aoi3/disparity_maps/*-F_NS.vrt#' \
   -e 's#azOffStdFile_FN#/raid/Planet_NWArg/PS2_aoi3/confidence/*_confidence.tif#' \
   -e 's#rgOffStdFile_FN#/raid/Planet_NWArg/PS2_aoi3/confidence/*_confidence.tif#' \
-  /home/bodo/Dropbox/Argentina/Planet2mintpy/PS2_Mintpy_template.cfg \
+  -e 's#demFile_FN#/raid/Planet_NWArg/PS2_aoi3/CopernicusDEM_clip_aoi3.tif#' \
+  /home/bodo/Dropbox/soft/github/Planet2MintPy/PS2_Mintpy_template.cfg \
   >/raid/Planet_NWArg/PS2_aoi3/mintpy/PS2_aoi3_config.cfg
 
-python /home/bodo/Dropbox/Argentina/Planet2mintpy/prep_Planet_stack.py \
+python /home/bodo/Dropbox/soft/github/Planet2MintPy/prep_Planet_stack.py \
           --dx_fn "/raid/Planet_NWArg/PS2_aoi3/disparity_maps/*-F_EW.vrt" \
           --dy_fn "/raid/Planet_NWArg/PS2_aoi3/disparity_maps/*-F_NS.vrt" \
           --dx_confidence_fn "/raid/Planet_NWArg/PS2_aoi3/confidence/*_confidence.tif" \
@@ -63,7 +65,7 @@ view.py velocityRg_var.h5 --nodisplay --title "PS2 var: Stats Rg (EW)" --zero-ma
 convert -quality 50 PS2_EW_var_nomask_meanv.png /home/bodo/Dropbox/Argentina/aoi3/PS2_aoi3_EW_var_nomask_meanv.jpg
 convert -quality 50 PS2_EW_var_nomask_stats.png /home/bodo/Dropbox/Argentina/aoi3/PS2_aoi3_EW_var_nomask_stats.jpg
 
-python /home/bodo/Dropbox/Argentina/Planet2mintpy/calc_velocity_from_AzRg.py \
+python /home/bodo/Dropbox/soft/github/Planet2MintPy/calc_velocity_from_AzRg.py \
     --rg_file /raid/Planet_NWArg/PS2_aoi3/mintpy/velocityRg_var.h5 \
     --az_file /raid/Planet_NWArg/PS2_aoi3/mintpy/velocityAz_var.h5 \
     --HDF_outfile /raid/Planet_NWArg/PS2_aoi3/mintpy/aoi3_var_velocity.h5 \

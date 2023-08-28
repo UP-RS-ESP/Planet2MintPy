@@ -22,8 +22,11 @@ import pandas as pd
 EXAMPLE = """example:
 extract_mask_TS.py \
     --az_ts_file timeseriesAz_var.h5 \
+    --az_rs_file residualInvAz_var.h5 \
     --rg_ts_file timeseriesRg_var.h5 \
+    --rg_rs_file residualInvRg_var.h5 \
     --mask_file aoi4_var_velocity_mask.h5 \
+    --prcp_threshold 90 \
     --HDF_outfile  aoi4_var_velocity_mask_ts.h5 \
     --npy_outfile aoi4_var_velocity_mask_ts.npy \
     --out_pngfname aoi4_var_velocity_mask_ts.png
@@ -41,7 +44,10 @@ def cmdLineParser():
     parser = argparse.ArgumentParser(description=DESCRIPTION, epilog=EXAMPLE, formatter_class=RawTextHelpFormatter)
     parser.add_argument('--rg_ts_file', help='dx (Rg) offset timeseries', required=True)
     parser.add_argument('--az_ts_file', help='dy (Az) offset timeseries', required=True)
-    parser.add_argument('--mask_file', help='Mask file with data == 1', required=True)
+    parser.add_argument('--rg_rs_file', default='', help='dx (Rg) offset timeseries residual', required=False)
+    parser.add_argument('--az_rs_file', default='', help='dy (Az) offset timeseries residual', required=False)
+    parser.add_argument('--prcp_threshold', type=np.int8, default='90', help='Percentile threshold (0-100) for residual masking', required=False)
+    parser.add_argument('--mask_file', help='Mask file with data == 1. Allowed are npy, npy.gz, h5, and tif files.', required=True)
     parser.add_argument('--HDF_outfile', help='Output filename containing percentiles of each timestep', required=True)
     parser.add_argument('--npy_outfile', help='Output filename for masked array from each timestep', required=True)
     parser.add_argument('--out_pngfname', default="", help='Output TS plot in PNG format', required=True)
@@ -72,16 +78,15 @@ if __name__ == '__main__':
     # #testing purposes:
     # parser = argparse.ArgumentParser(description='Extract time series from mask (mask needs to be same size as TS).')
     # args = parser.parse_args()
-    # #args.az_ts_file = '/raid/L8_DelMedio/mintpy/timeseriesAz_var.h5'
-    # #args.rg_ts_file = '/raid/L8_DelMedio/mintpy/timeseriesRg_var.h5'
-    # #args.mask_file = '/raid/L8_DelMedio/mintpy/DelMedio_var_velocity_mask.h5'
-    # #args.HDF_outfile = '/raid/L8_DelMedio/mintpy/DelMedio_var_velocity_masked_ts.h5'
     # args.az_ts_file = 'timeseriesAz_var.h5'
     # args.rg_ts_file = 'timeseriesRg_var.h5'
+    # args.az_rs_file = 'residualInvAz_var.h5'
+    # args.rg_rs_file = 'residualInvRg_var.h5'
     # args.mask_file = 'aoi4_var_velocity_mask.h5'
     # args.HDF_outfile = 'aoi4_var_velocity_mask_ts.h5'
     # args.npy_outfile='aoi4_var_velocity_mask_ts.npy'
     # args.out_pngfname='aoi4_var_velocity_mask_ts_velocity.png'
+    # args.prcp_threshold = 90
 
     args.atr = readfile.read_attribute(args.az_ts_file)
     args.coord = ut.coordinate(args.atr)
@@ -104,8 +109,33 @@ if __name__ == '__main__':
     az_data *= float(az_atr['X_STEP'])
     print('done ')
 
+    if len(args.rg_rs_file) > 0 and len(args.az_rs_file) > 0:
+        print('Reading Rg residuals ... ',end='',flush=True)
+        rg_res_data, rg_res_atr = readfile.read(args.rg_rs_file, datasetName='residual')
+        rg_res_data *= float(rg_res_atr['X_STEP'])
+        print('done ')
+
+        print('Reading Az residuals ... ',end='',flush=True)
+        az_res_data, az_res_atr = readfile.read(args.az_rs_file, datasetName='residual')
+        az_res_data *= float(az_res_atr['X_STEP'])
+        print('done ')
+
     print('Reading mask... ',end='',flush=True)
-    mask_data, mask_atr = readfile.read(args.mask_file, datasetName='mask')
+    if args.mask_file.endswith('.h5'):
+        mask_data, mask_atr = readfile.read(args.mask_file, datasetName='mask')
+    elif args.mask_file.endswith('.npy'):
+        f = args.mask_file
+        mask_data = np.load(f)
+        f = None
+    elif args.mask_file.endswith('.npy.gz'):
+        f = gzip.GzipFile(args.mask_file, "r")
+        mask_data = np.load(f)
+        f = None
+    elif args.mask_file.endswith('.tif'):
+        from osgeo import gdal
+        ds = gdal.Open(args.mask_file)
+        mask_data = ds.GetRasterBand(1).ReadAsArray().shape
+        ds = None
     if mask_data.shape == rg_data[0].shape == False:
         print('Mask band and time series need to have the same dimension.')
     print('done ')
@@ -116,6 +146,11 @@ if __name__ == '__main__':
     az_data_cum.fill(np.nan)
     rg_data_cum = np.empty((rg_data.shape[0], nre), dtype=np.float32)
     rg_data_cum.fill(np.nan)
+    if len(args.rg_rs_file) > 0 and len(args.az_rs_file) > 0:
+        az_res = np.empty(nre, dtype=np.float32)
+        az_res.fill(np.nan)
+        rg_res = np.empty(nre, dtype=np.float32)
+        rg_res.fill(np.nan)
     delta_year_ar = np.empty(az_data.shape[0], dtype=np.float32)
     delta_year_ar.fill(np.nan)
     delta_day_ar = np.empty(az_data.shape[0], dtype=np.float32)
@@ -128,6 +163,9 @@ if __name__ == '__main__':
             crg_data_cum = np.zeros(nre)
             delta_year = 0
             delta_day = 0
+            if len(args.rg_rs_file) > 0 and len(args.az_rs_file) > 0:
+                rg_res = rg_res_data[mask_data == 1]
+                az_res = az_res_data[mask_data == 1]
         elif i > 0:
             delta_days = datetime.datetime.strptime(dates[i], "%Y%m%d") - datetime.datetime.strptime(dates[i-1], "%Y%m%d")
             delta_year = delta_days.days/365
@@ -146,6 +184,27 @@ if __name__ == '__main__':
         delta_day_ar[i] = delta_day
         rg_data_cum[i,:] = crg_data_cum
         az_data_cum[i,:] = caz_data_cum
+
+    #use residual filter and remove all points that are above residual percentage
+    #maybe better to work with sum of residuals - here we are filtering separtely:
+    # first for range and then for azimuth
+    if len(args.rg_rs_file) > 0 and len(args.az_rs_file) > 0:
+        #residual files are given - use these to apply additional filters for mask region
+        residual_threshold = args.prcp_threshold
+        rg_res_p = np.percentile(rg_res, residual_threshold)
+        rg_res_p_idx = np.where(rg_res < rg_res_p)[0]
+        rg_data_cum = rg_data_cum[:,rg_res_p_idx]
+        az_data_cum = az_data_cum[:,rg_res_p_idx]
+        az_res = az_res[rg_res_p_idx]
+        #now azimuth
+        az_res_p = np.percentile(az_res, residual_threshold)
+        az_res_p_idx = np.where(az_res < az_res_p)[0]
+        rg_data_cum = rg_data_cum[:,az_res_p_idx]
+        az_data_cum = az_data_cum[:,az_res_p_idx]
+        az_res = az_res[az_res_p_idx]
+
+        #recalculate nre, because values have been removed
+        nre = rg_data_cum.shape[1]
 
     # plt.plot(np.cumsum(delta_day_ar), np.mean(rg_data_cum, axis=1), 'k.'))
     # perform linear interpolation of dx and dy offsets using delta_years
@@ -262,10 +321,9 @@ if __name__ == '__main__':
     ax[2].set_ylabel("Velocity [m/y]")
     ax[2].grid()
     ax[2].set_xlabel("Time")
-    fig.suptitle('Cumulative TS with linear interpolation from inversion with weights', fontsize=16)
+    fig.suptitle('Cumulative TS with linear interpolation from inversion', fontsize=16)
     fig.tight_layout()
     fig.savefig(args.out_pngfname[:-4]+'_mean.png')
-
 
     # prepare pcolormesh with histogram plot for velocity
     mintimedelta = 30 # [days]
@@ -298,7 +356,7 @@ if __name__ == '__main__':
     # ax[0].xaxis.set_minor_formatter(matplotlib.dates.DateFormatter('%m'))
     cb0 = plt.colorbar(im0, ax=ax[0], location='bottom', pad=0.1)
     cb0.set_label('Probability')
-    ax[0].set_title('Lin. Interp. Velocity from inversion with var weights')
+    ax[0].set_title('Lin. Interp. Velocity from inversion')
     ax[0].set_xlabel('Time')
     ax[0].set_ylabel('Velocity [m/y]')
     ax[0].grid()

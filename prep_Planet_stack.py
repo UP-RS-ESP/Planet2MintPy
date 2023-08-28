@@ -31,7 +31,8 @@ prep_Planet_stack.py \
           --dy_confidence_fn "confidence/*_confidence.tif" \
           --meta_file /raid/PS2_aoi3/PS2_aoi3_metadata.txt --pixel_size 3.0 \
           --template_file /raid/PS2_aoi3/mintpy/PS2_aoi3_config.cfg \
-          --h5_stack_fn /raid/PS2_aoi3/mintpy/inputs/geo_offsetStack_aoi3.h5
+          --h5_stack_fn /raid/PS2_aoi3/mintpy/inputs/geo_offsetStack_aoi3.h5 \
+          --h5_dem_fn /raid/PS2_aoi3/mintpy/inputs/geo_DEM_aoi3.h5
 """
 
 DESCRIPTION = """
@@ -51,6 +52,7 @@ def cmdLineParser():
     parser.add_argument('-p', '--pixel_size', type=np.float32, default=3.0, help='Pixel Size in m', required=False)
     parser.add_argument('--template_file',  help='Template file containing directories and processing information for MintPy.', required=True)
     parser.add_argument('--h5_stack_fn',  help='Output H5 stack file.', required=True)
+    parser.add_argument('--h5_dem_fn',  default='', help='Output H5 DEM file.', required=False)
     return parser.parse_args()
 
 
@@ -84,7 +86,7 @@ GEOM_DSET_NAME2TEMPLATE_KEY = {
 }
 
 
-OBS_DSET_NAMES = ['unwrapPhase', 'rangeOffset', 'azimuthOffset']
+OBS_DSET_NAMES = ['height', 'rangeOffset', 'azimuthOffset']
 
 
 #########################################################################
@@ -869,25 +871,23 @@ if __name__ == '__main__':
 
     # Can add DEM loading here - if DEM with exact same coordinates exists - needs to be geometric dataset
     # # geometry in geo / radar coordinates
-    # geom_dset_name2template_key = {
-    #     **GEOM_DSET_NAME2TEMPLATE_KEY,
-    #     **IFG_DSET_NAME2TEMPLATE_KEY,
-    #     **OFF_DSET_NAME2TEMPLATE_KEY,
-    # }
-    # geom_geo_obj, geom_radar_obj = read_inps_dict2geometry_dict_object(iDict, geom_dset_name2template_key)
-    # geom_geo_file = os.path.abspath('./inputs/geometryGeo_corrected_remap-F.h5')
-    #
-    # if run_or_skip(geom_geo_file, geom_geo_obj, iDict['box4geo'], **kwargs) == 'run':
-    #     geom_geo_obj.write2hdf5(
-    #         outputFile=geom_geo_file,
-    #         access_mode='w',
-    #         box=iDict['box4geo'],
-    #         xstep=iDict['xstep'],
-    #         ystep=iDict['ystep'],
-    #         compression='lzf')
-    #
-    # observations: ifgram, ion or offset
-    # loop over obs stacks
+    if len(inps.h5_dem_fn) > 0:
+        #store DEM to HDF file
+        geom_dset_name2template_key = {
+            **GEOM_DSET_NAME2TEMPLATE_KEY
+        }
+        geom_geo_obj, geom_radar_obj = read_inps_dict2geometry_dict_object(iDict, geom_dset_name2template_key)
+        geom_geo_file = os.path.abspath(inps.h5_dem_fn)
+
+        if run_or_skip(geom_geo_file, geom_geo_obj, iDict['box4geo'], **kwargs) == 'run':
+            geom_geo_obj.write2hdf5(
+                outputFile=geom_geo_file,
+                access_mode='w',
+                box=iDict['box4geo'],
+                xstep=iDict['xstep'],
+                ystep=iDict['ystep'],
+                compression='lzf')
+
     stack_ds_name2tmpl_key_list = [
         OFF_DSET_NAME2TEMPLATE_KEY
     ]
