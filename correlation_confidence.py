@@ -23,6 +23,95 @@ from scipy import signal
 
 
 @njit(parallel=True)
+def angle_variance(directions):
+    #calculate circular variance from stack of directions
+    #scaled between 0 and 1
+    cvar = np.empty((directions.shape[1],directions.shape[2]), dtype=np.float32)
+    cvar.fill(np.nan)
+
+    for i in prange(directions.shape[1]):
+        for j in prange(directions.shape[2]):
+            #iterate through all pixels and take variance in time
+            deg = directions[:,i,j]
+            deg = np.deg2rad(deg)
+            deg = deg[~np.isnan(deg)]
+
+            S = deg.copy()
+            C = deg.copy()
+
+            length = C.size
+
+            S = np.sum(np.sin(S))
+            C = np.sum(np.cos(C))
+            R = np.sqrt(S**2 + C**2)
+            R_avg = R/length
+            V = 1 - R_avg
+
+            cvar[i,j] = V
+    return cvar
+
+
+@njit(parallel=True)
+def calc_angle_numba(dx_stack, dy_stack):
+    # Calculate angle difference
+    angle = np.empty(dx_stack.shape, dtype=np.float32)
+    angle.fill(np.nan)
+
+    for i in prange(dy_stack.shape[0]):
+        dx_stackc = dx_stack[i,:,:].ravel()
+        dy_stackc = dy_stack[i,:,:].ravel()
+        dangle = np.rad2deg(np.arctan2(dy_stackc, dx_stackc))
+
+        #convert to coordinates with North = 0
+        dangle[dangle < 0] = np.abs(dangle[dangle < 0]) + 180.
+        dangle = dangle - 90.
+        dangle[dangle < 0] = np.abs(dangle[dangle < 0]) + 90.
+        angle[i,:,:] = dangle.reshape(dx_stack.shape[1], dx_stack.shape[2])
+
+    return angle
+
+
+def circular_mean(angles, weights=None):
+    # This code also allows for weighted averages.
+    # It returns both the mean and the variance as defined
+    # in the appropriate Wikipedia article. Calculations are in radians.
+    # https://en.wikipedia.org/wiki/Circular_mean
+
+    if weights is None:
+        weights = np.ones(len(angles))
+    vectors = [ [w*np.cos(a), w*np.sin(a)]  for a,w in zip(angles,weights) ]
+    vector = np.sum(vectors, axis=0) / np.sum(weights)
+    x,y = vector
+    angle_mean = np.arctan2(y,x)
+    angle_variance = 1. - np.linalg.norm(vector)  # x*2+y*2 = hypot(x,y)
+
+    return angle_mean, angle_variance
+
+
+
+@njit(parallel=True)
+def variance_angle(deg):
+    """
+    Simplified variance of angle calculation
+    deg: angles in degrees
+    """
+    deg = np.deg2rad(deg)
+    deg = deg[~np.isnan(deg)]
+
+    S = deg.copy()
+    C = deg.copy()
+
+    length = C.size
+
+    S = np.sum(np.sin(S))
+    C = np.sum(np.cos(C))
+    R = np.sqrt(S**2 + C**2)
+    R_avg = R/length
+    V = 1- R_avg
+    return V
+
+
+@njit(parallel=True)
 def NormalizeData(data):
     # Normalize data between 0 and 1 using min and max values
     return (data - np.nanmin(data)) / (np.nanmax(data) - np.nanmin(data))
@@ -73,6 +162,20 @@ def nanvar_numba(array_data):
         for j in prange(array_data.shape[2]):
             nanvar[i, j] = np.nanvar(array_data[:, i, j])
     return nanvar
+
+
+@njit(parallel=True)
+def nanstd_numba(array_data):
+    # nanstd_numba - calculates nanstd in parallel mode using numba
+    # expects 3 dimensions:
+    #  - dimension 0 contains time steps
+    #  - dimension 1 and 2 contain image data
+    nanstd = np.empty((array_data.shape[1], array_data.shape[2]), dtype=np.float32)
+    nanstd.fill(np.nan)
+    for i in prange(array_data.shape[1]):
+        for j in prange(array_data.shape[2]):
+            nanstd[i, j] = np.nanstd(array_data[:, i, j])
+    return nanstd
 
 
 @njit(parallel=True)
@@ -331,6 +434,39 @@ def load_data(filelist, dxdy_size, output_path = 'npy', area_fname='DelMedio', m
         np.save(file=f, arr=date1_stack)
         f.close()
         f = None
+
+
+def load_tif_stacks(filelist, dxdy_size, mask=False):
+    from osgeo import gdal
+    dx_stack = np.empty((len(filelist), dxdy_size[0], dxdy_size[1]), dtype=np.float32)
+    dx_stack.fill(np.nan)
+    dy_stack = np.empty((len(filelist), dxdy_size[0], dxdy_size[1]), dtype=np.float32)
+    dy_stack.fill(np.nan)
+    mask_stack = np.zeros((len(filelist), dxdy_size[0], dxdy_size[1]), dtype=np.int8)
+
+    for i in tqdm.tqdm(range(len(filelist))):
+        # loop would benefit from parallelization
+        cfile_basename = os.path.basename(filelist[i])
+        cfile = filelist[i]
+        ds = gdal.Open(cfile)
+        dx = ds.GetRasterBand(1).ReadAsArray()
+        dy = ds.GetRasterBand(2).ReadAsArray()
+        if mask == True:
+            dxdy_mask = ds.GetRasterBand(3).ReadAsArray()
+            dx[dxdy_mask == 0] = np.nan
+            dy[dxdy_mask == 0] = np.nan
+
+        dx_stack[i,:,:] = dx
+        dy_stack[i,:,:] = dy
+        if mask == True:
+            mask_stack[i,:,:] = dxdy_mask
+        ds = None
+
+    if mask == True:
+        return dx_stack, dy_stack, mask_stack
+    else:
+        return dx_stack, dy_stack
+
 
 def interp_nan_gpu(array_stack, interp_nan_fname):
     # RegularGridInterpolator - not working
@@ -793,3 +929,39 @@ def aspect_slope_dem(dem_fname, aspect_out_fname, slope_out_fname, kernel_size =
     ds = None
 
     return slope, aspect
+
+def read_file(file, b=1):
+    with rasterio.open(file) as src:
+        return(src.read(b))
+
+def calc_direction(fn):
+    with rasterio.open(fn) as src:
+        # get raster resolution from metadata
+        meta = src.meta
+
+        # first band is offset in x direction, second band in y
+        dx = src.read(1)
+        dy = src.read(2)
+
+        if meta["count"] == 3:
+           # print("Interpreting the third band as good pixel mask.")
+            valid = src.read(3)
+            dx[valid == 0] = np.nan
+            dy[valid == 0] = np.nan
+
+    #calculate angle to north
+    north = np.array([0,1])
+    #stack x and y offset to have a 3d array with vectors along axis 2
+    vector_2 = np.dstack((dx,dy))
+    unit_vector_1 = north / np.linalg.norm(north)
+    unit_vector_2 = vector_2 / np.linalg.norm(vector_2, axis = 2, keepdims = True)
+    #there np.tensordot is needed (instead of np.dot) because of the multiple dimensions of the input arrays
+    dot_product = np.tensordot(unit_vector_1, unit_vector_2, axes=([0],[2]))
+    direction = np.rad2deg(np.arccos(dot_product))
+
+    #as always the smallest angle to north is given, values need to be substracted from 360 if x is negative
+    subtract = np.zeros(dx.shape)
+    subtract[dx<0] = 360
+    direction = abs(subtract-direction)
+
+    return direction

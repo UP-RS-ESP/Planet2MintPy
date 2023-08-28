@@ -16,6 +16,11 @@ python /home/bodo/Dropbox/soft/github/Planet2MintPy/create_offset_confidence.py 
            --confidence_tif_out_path confidence \
            --sensor PS2
 
+python /home/bodo/Dropbox/soft/github/Planet2MintPy/generate_landslide_mask.py \
+          --offset_tif_fn "disparity_maps/*_polyfit-F.tif" \
+          --area_name aoi3 \
+          --npy_out_path masks
+
 python /home/bodo/Dropbox/soft/github/Planet2MintPy/prep_Planet_metadata.py \
   --offset_tif_fn "disparity_maps/*_polyfit-F.tif" \
   --dx_confidence_tif_fn "confidence/*_confidence.tif" \
