@@ -24,7 +24,7 @@ def cmdLineParser():
     parser = argparse.ArgumentParser(description=DESCRIPTION, epilog=EXAMPLE, formatter_class=RawTextHelpFormatter)
     parser.add_argument('--offset_tif_fn', help='List of tif files containing dx and dy offsets corresponding to bands 1 and 2', required=True)
     parser.add_argument('-m', '--metadata_fn', help='Output text file containing metadata (to be read by mintpy)', required=True)
-    parser.add_argument('--processor', default='PS2', help='Chose processor among L8, PS2, SD. Will determine the naming structure of file.', required=False)
+    parser.add_argument('--processor', default='PS2', help='Chose processor among L8, PS2, PSB.SD. Will determine the naming structure of file.', required=False)
     parser.add_argument('--dx_confidence_tif_fn', default='', help='List of tif files containing confidence values for dx (same data can be used for dx and dy if required)', required=False)
     parser.add_argument('--dy_confidence_tif_fn', default='', help='List of tif files containing confidence values for dy. (same data can be used for dx and dy if required)', required=False)
     return parser.parse_args()
@@ -66,7 +66,7 @@ if __name__ == '__main__':
             date1 = cfile.split('_')[1]
             time0 = '0'
             time1 = '0'
-        if args.processor == 'SD':
+        if args.processor == 'PSB.SD':
             date1 = cfile.split('_')[4]
             time1 = cfile.split('_')[5]
         if args.processor == 'PS2':
@@ -101,7 +101,7 @@ if __name__ == '__main__':
             date0 = cfile.split('_')[1]
             if args.processor == 'L8':
                 date1 = cfile.split('_')[2]
-            if args.processor == 'SD':
+            if args.processor == 'PSB.SD':
                 date1 = cfile.split('_')[2]
             if args.processor == 'PS2':
                 date1 = cfile.split('_')[2]

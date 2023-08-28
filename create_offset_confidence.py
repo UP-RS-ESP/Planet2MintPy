@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import correlation_confidence as cc
 
 EXAMPLE = """There exist several approaches and philosophies to calculate uncertainties (or weights or confidences)
-from image-correlation data. Here, we rely on a median approach for PlanetScope (both SD and PS2) data. The steps include:
+from image-correlation data. Here, we rely on a median approach for PlanetScope (both PSB.SD and PS2) data. The steps include:
 1. Perform a 2D median filter with kernel_size=9 (variable) for each time step separately.
 2. Take the median of all time steps to obtain an averaged value for each pixel.
 3. Calculate the angle difference between this averaged value and each time step (x and y offset). Take the cosine of the angle difference to obtain a value between 0 and 1. All angle differences larger than 90 degree will be set to 0.
@@ -63,7 +63,7 @@ def cmdLineParser():
     parser.add_argument('--area_name', help='Name of area of interest', required=True)
     parser.add_argument('--confidence_tif_out_path', default='confidence', help='Output path for confidence files', required=False)
     parser.add_argument('-k', '--kernel_size', type=np.int8, default=9, help='Kernel Size for median filtering', required=False)
-    parser.add_argument('--sensor',  default='PS', help='Sensor Name - L8, PS2, SD - for determining averaging method', required=False)
+    parser.add_argument('--sensor',  default='PS', help='Sensor Name - L8, PS2, PSB.SD - for determining averaging method', required=False)
     return parser.parse_args()
 
 
@@ -303,7 +303,7 @@ if __name__ == '__main__':
 
     # here we use only the median angle difference for Planet
 
-    if args.sensor == 'PS2' or args.sensor == 'SD':
+    if args.sensor == 'PS2' or args.sensor == 'PSB.SD':
         combined_score = ts_dangle
     elif args.sensor == 'L8':
         ### USE Dem for direction filtering
@@ -453,7 +453,7 @@ if __name__ == '__main__':
     # Export Angle difference to tif files (each time step)
     if os.path.exists(args.confidence_tif_out_path) == False:
         os.mkdir(args.confidence_tif_out_path)
-    if args.sensor == 'PS2' or args.sensor == 'SD':
+    if args.sensor == 'PS2' or args.sensor == 'PSB.SD':
         cc.write_Geotiff_ts(input_tif, ts_dangle, date0_stack, date1_stack,
             output_prefix=args.area_name, output_postfix='confidence', output_dir=args.confidence_tif_out_path)
 
