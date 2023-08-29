@@ -11,7 +11,7 @@ from datetime import datetime
 
 import numpy as np
 import matplotlib
-matplotlib.use('Agg')
+# matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 from numba import njit, prange
@@ -20,7 +20,7 @@ from numba_progress import ProgressBar
 from scipy.interpolate import NearestNDInterpolator
 from scipy import ndimage
 from scipy import signal
-
+from skimage import measure
 
 @njit(parallel=True)
 def angle_variance(directions):
@@ -86,7 +86,6 @@ def circular_mean(angles, weights=None):
     angle_variance = 1. - np.linalg.norm(vector)  # x*2+y*2 = hypot(x,y)
 
     return angle_mean, angle_variance
-
 
 
 @njit(parallel=True)
@@ -256,7 +255,7 @@ def mZscore(array_data, array_median):
 
 
 @njit(parallel=True)
-def calc_dangle(dx_stack, dy_stack, dx_stack_median_ar, dy_stack_median_ar):
+def calc_dangle(dx_stack, dy_stack, dx_stack_median_ar, dy_stack_median_ar, mask_stack):
     # calculate angle difference between pixel and median-filter X and Y directions
     # the median filtered data are smoothed and
     ts_dangle = np.empty(dy_stack.shape, dtype=np.float32)
@@ -265,7 +264,7 @@ def calc_dangle(dx_stack, dy_stack, dx_stack_median_ar, dy_stack_median_ar):
     ts_dangle_median.fill(np.nan)
     ts_dangle_var = np.empty(dy_stack.shape[0], dtype=np.float32)
     ts_dangle_var.fill(np.nan)
-
+    ts_dangle_mask = np.zeros(dy_stack.shape, dtype=np.int8)
     for i in prange(dy_stack.shape[0]):
         dx_stackc = dx_stack[i,:,:].ravel()
         dy_stackc = dy_stack[i,:,:].ravel()
@@ -274,12 +273,21 @@ def calc_dangle(dx_stack, dy_stack, dx_stack_median_ar, dy_stack_median_ar):
         dangle = np.rad2deg(np.arctan2(dy_stackc-dy_stack_medianc, dx_stackc - dx_stack_medianc))
         dangle = np.clip(dangle, -90, 90)
         dangle_ar = dangle.reshape(dx_stack_median_ar.shape[0], dx_stack_median_ar.shape[1])
-        ts_dangle[i,:,:] = np.cos(np.deg2rad(dangle_ar.copy()))
+        mask_ar = np.where(np.abs(dangle_ar) == 90, 0, 1).astype(np.int8) # all angles of -90 and 90 are set to 0
+        # make sure that all nans in mask_stack are also set to 0
+        # need to work with ravel to make numba happy
+        idxxy = np.where(mask_stack[i,:,:].ravel() == 0)[0].astype(np.int32)
+        mask_ar.ravel()[idxxy] = np.int8(0)
+        # set Nan border values to 0:
+        idxxy = np.where(np.isnan(dangle))[0].astype(np.int32)
+        mask_ar.ravel()[idxxy] = np.int8(0)
+        ts_dangle_mask[i,:,:] = mask_ar
+        ts_dangle[i,:,:] = np.cos(np.deg2rad(dangle_ar))
         ts_dangle_median[i] = np.nanmedian(ts_dangle[i,:,:])
         ts_dangle_var[i] = np.nanvar(ts_dangle[i,:,:])
         dangle = None
         dangle_ar = None
-    return ts_dangle, ts_dangle_median, ts_dangle_var
+    return ts_dangle, ts_dangle_median, ts_dangle_var, ts_dangle_mask
 
 
 @njit(parallel=True)
@@ -336,7 +344,7 @@ def load_data(filelist, dxdy_size, output_path = 'npy', area_fname='DelMedio', m
     deltay_npy_fname = os.path.join(output_path, area_fname + '_deltay.npy.gz')
     date0_npy_fname = os.path.join(output_path, area_fname + '_date0.npy.gz')
     date1_npy_fname = os.path.join(output_path, area_fname + '_date1.npy.gz')
-    if os.path.exists(dx_npy_fname) and os.path.exists(dy_npy_fname) and os.path.exists(deltay_npy_fname) and os.path.exists(date0_npy_fname) and os.path.exists(date1_npy_fname):
+    if os.path.exists(mask_npy_fname) and os.path.exists(dx_npy_fname) and os.path.exists(dy_npy_fname) and os.path.exists(deltay_npy_fname) and os.path.exists(date0_npy_fname) and os.path.exists(date1_npy_fname):
         print('gzipped npy files %s and %s exist'%(dx_npy_fname, dy_npy_fname) )
         return
 
@@ -367,7 +375,10 @@ def load_data(filelist, dxdy_size, output_path = 'npy', area_fname='DelMedio', m
             dxdy_mask = ds.GetRasterBand(3).ReadAsArray()
             dx[dxdy_mask == 0] = np.nan
             dy[dxdy_mask == 0] = np.nan
-
+        else:
+            #create mask with nan values from dx file
+            dxdy_mask = np.ones(dx.shape)
+            dxdy_mask[np.isnan(dx)] = 0
         #calculate date (time) difference in years from filename
         if sensor == 'L8':
             date0 = cfile_basename.split('_')[0]
@@ -388,8 +399,7 @@ def load_data(filelist, dxdy_size, output_path = 'npy', area_fname='DelMedio', m
 
         dx_stack[i,:,:] = dx
         dy_stack[i,:,:] = dy
-        if mask == True:
-            mask_stack[i,:,:] = dxdy_mask
+        mask_stack[i,:,:] = dxdy_mask
         ds = None
 
     if os.path.exists(dx_npy_fname) is False:
@@ -406,13 +416,12 @@ def load_data(filelist, dxdy_size, output_path = 'npy', area_fname='DelMedio', m
         f.close()
         f = None
 
-    if mask == True:
-        if os.path.exists(mask_npy_fname) is False:
-            print('saving %s to gzipped npy files'%mask_npy_fname)
-            f = gzip.GzipFile(mask_npy_fname, "w")
-            np.save(file=f, arr=mask_stack)
-            f.close()
-            f = None
+    if os.path.exists(mask_npy_fname) is False:
+        print('saving %s to gzipped npy files'%mask_npy_fname)
+        f = gzip.GzipFile(mask_npy_fname, "w")
+        np.save(file=f, arr=mask_stack)
+        f.close()
+        f = None
 
     if os.path.exists(deltay_npy_fname) is False:
         print('saving %s to gzipped npy files'%deltay_npy_fname)
@@ -455,11 +464,14 @@ def load_tif_stacks(filelist, dxdy_size, mask=False):
             dxdy_mask = ds.GetRasterBand(3).ReadAsArray()
             dx[dxdy_mask == 0] = np.nan
             dy[dxdy_mask == 0] = np.nan
+        else:
+            #create mask with nan values from dx file
+            dxdy_mask = np.ones(dx.shape)
+            dxdy_mask[np.isnan(dx)] = 0
 
         dx_stack[i,:,:] = dx
         dy_stack[i,:,:] = dy
-        if mask == True:
-            mask_stack[i,:,:] = dxdy_mask
+        mask_stack[i,:,:] = dxdy_mask
         ds = None
 
     if mask == True:
@@ -555,7 +567,7 @@ def filter2d_nanstddev(array_stack, mask_stack, kernel_size=7):
     #
     # pad array with pad - only pad dimension 1 and 2
     # easier to pad than to check for border pixels
-    print('padding array')
+    # print('padding array')
     array_stack2 = np.pad(array_stack, ((0,0), (pad,pad), (pad,pad)), 'reflect')
     print('running nan std.dev. filtering')
     with ProgressBar(total=array_stack.shape[0]*array_stack.shape[1]*array_stack.shape[2]) as progress:
@@ -590,7 +602,7 @@ def filter2d_nanmedian(array_stack, mask_stack, kernel_size=7):
     #
     # pad array with pad - only pad dimension 1 and 2
     # easier to pad than to check for border pixels
-    print('padding array')
+    # print('padding array')
     array_stack2 = np.pad(array_stack, ((0,0), (pad,pad), (pad,pad)), 'reflect')
     print('running nan median filtering')
     with ProgressBar(total=array_stack.shape[0]*array_stack.shape[1]*array_stack.shape[2]) as progress:
@@ -625,7 +637,7 @@ def filter2d_nanmedian_nomask(array_stack, kernel_size=7):
     #
     # pad array with pad - only pad dimension 1 and 2
     # easier to pad than to check for border pixels
-    print('padding array')
+    # print('padding array')
     array_stack2 = np.pad(array_stack, ((0,0), (pad,pad), (pad,pad)), 'reflect')
     print('running nan median filtering')
     with ProgressBar(total=array_stack.shape[0]*array_stack.shape[1]*array_stack.shape[2]) as progress:
@@ -699,14 +711,53 @@ def write_Geotiff_ts(input_tif, array_ts, date0_stack, date1_stack, output_prefi
     return
 
 
+def write_Geotiff_ts_mask(input_tif, array_ts, date0_stack, date1_stack, output_prefix, output_postfix, output_dir):
+    from osgeo import gdal
+    #load georeference information from existing tif file
+    ds = gdal.Open(input_tif)
+    gt = ds.GetGeoTransform()
+    sr = ds.GetProjection()
+    print('Writing mask time series file to %s'%output_dir)
+    for i in tqdm.tqdm(range(date0_stack.shape[0])):
+        output_tif = '%s_%s_%s_%s.tif'%(output_prefix, int(date0_stack[i]), int(date1_stack[i]), output_postfix)
+        output_tif = os.path.join(output_dir, output_tif)
+
+        array = array_ts
+        #set nan to -9999
+        array[np.isnan(array)] = -9999.
+        # write to file
+        driver = gdal.GetDriverByName('GTiff')
+        ds_write = driver.Create(output_tif, xsize=ds.RasterXSize,
+                             ysize=ds.RasterYSize, bands=1,
+                             eType=gdal.GDT_Float32,
+                             options=['COMPRESS=LZW', 'ZLEVEL=7']
+                             )
+        ds_write.GetRasterBand(1).WriteArray(array)
+        ds_write.GetRasterBand(1).SetNoDataValue(-9999.)
+        # Setup projection and geo-transform
+        ds_write.SetProjection(sr)
+        ds_write.SetGeoTransform(gt)
+        # Save the file
+        ds_write.FlushCache()
+        ds_write = None
+        driver = None
+    ds = None
+
+    return
+
+
 def plot_dxdy_median(dx_stack_median_ar, dy_stack_median_ar, dx_stack_var_ar, dy_stack_var_ar, nre, stack_median_var_4plots_fname):
     # plot median and variance of all median-filtered time slices
     fig, ax = plt.subplots(2, 2, figsize=(12, 10), dpi=300)
-    im0 = ax[0,0].imshow(dx_stack_median_ar, cmap='Spectral', vmin=-0.3, vmax=0.3)
+    vmin_lb = np.round(np.nanpercentile(dx_stack_median_ar,2),2)
+    vmax_ub = np.abs(vmin_lb)
+    im0 = ax[0,0].imshow(dx_stack_median_ar, cmap='Spectral', vmin=vmin_lb, vmax=vmax_ub)
     ax[0,0].set_title('Dx median stack of 7x7 median filter (n=%d)'%nre, fontsize=14)
     cb0 = fig.colorbar(im0, ax=ax[0,0], location='bottom', pad=0.1)
     cb0.set_label('dx offset (px)')
-    im1 = ax[0,1].imshow(dy_stack_median_ar, cmap='Spectral', vmin=-0.1, vmax=0.1)
+    vmin_lb = np.round(np.nanpercentile(dy_stack_median_ar,2),2)
+    vmax_ub = np.abs(vmin_lb)
+    im1 = ax[0,1].imshow(dy_stack_median_ar, cmap='Spectral', vmin=vmin_lb, vmax=vmax_ub)
     ax[0,1].set_title('Dy median stack of 7x7 median filter (n=%d)'%nre, fontsize=14)
     cb1 = fig.colorbar(im1, ax=ax[0,1], location='bottom', pad=0.1)
     cb1.set_label('dy offset (px)')
@@ -722,6 +773,39 @@ def plot_dxdy_median(dx_stack_median_ar, dy_stack_median_ar, dx_stack_var_ar, dy
     fig.savefig(stack_median_var_4plots_fname)
 
 
+def plot_mask_sum(ts_dangle_mask_sum, nre, masksum_fname):
+    # sum of all mask pixels
+    ts_dangle_2plot = np.float32(ts_dangle_mask_sum)
+    ts_dangle_2plot[ts_dangle_2plot == 0] = np.nan
+    fig, ax = plt.subplots(1, 2, figsize=(16, 8), dpi=300)
+    im0 = ax[0].imshow(ts_dangle_2plot, cmap='viridis')
+    ax[0].set_title('Sum of good values (lower values are more masked values) (n=%d)'%nre, fontsize=14)
+    cb0 = fig.colorbar(im0, ax=ax[0], location='bottom', pad=0.1)
+    cb0.set_label('nr. of measurements')
+    im1 = ax[1].imshow(ts_dangle_2plot/nre, cmap='magma')
+    ax[1].set_title('Fraction of timesteps with data (1=all data) (n=%d)'%nre, fontsize=14)
+    cb1 = fig.colorbar(im1, ax=ax[1], location='bottom', pad=0.1)
+    cb1.set_label('data percentage (%)')
+    fig.tight_layout()
+    fig.savefig(masksum_fname)
+
+
+def plot_direction_sd_mask(directions_sd, mask, nre, directions_sd_fname):
+    # plotting standard deviation
+    fig, ax = plt.subplots(1, 2, figsize=(16, 8), dpi=300)
+    im0 = ax[0].imshow(directions_sd, cmap='viridis', vmin=0, vmax=90)
+    cb0 = plt.colorbar(im0, ax=ax[0], location='bottom', pad=0.1)
+    cb0.set_label('Std. Dev. Directions (degree)')
+    ax[0].set_title('Standard deviation of directions through time (n=%d)'%nre, fontsize=14)
+
+    im1 = ax[1].imshow(mask, cmap='gray_r')
+    ax[1].set_title('Mask based on direction SD (n=%d)'%nre, fontsize=14)
+    cb1 = fig.colorbar(im1, ax=ax[1], location='bottom', pad=0.1)
+    cb1.set_label('mask')
+    fig.tight_layout()
+    fig.savefig(directions_sd_fname)
+
+
 def plot_direction_magnitude(direction_stack_median, magnitude_stack_median, direction_stack_var, magnitude_stack_var, nre, stack_median_direction_magntitude_4plots_fname):
     fig, ax = plt.subplots(2, 2, figsize=(12, 10), dpi=300)
     im0 = ax[0,0].imshow(direction_stack_median, cmap='rainbow', vmin=-90, vmax=90)
@@ -732,7 +816,7 @@ def plot_direction_magnitude(direction_stack_median, magnitude_stack_median, dir
     ax[0,1].set_title('Velocity Magnitude (n=%d)'%nre, fontsize=14)
     cb1 = fig.colorbar(im1, ax=ax[0,1], location='bottom', pad=0.1)
     cb1.set_label('Magnitude (px/y)')
-    im2 = ax[1,0].imshow(direction_stack_var, cmap='viridis', vmin=0, vmax=50)
+    im2 = ax[1,0].imshow(direction_stack_var, cmap='viridis', vmin=0, vmax=45)
     ax[1,0].set_title('Velocity Direction variance (n=%d)'%nre, fontsize=14)
     cb2 = fig.colorbar(im2, ax=ax[1,0], location='bottom', pad=0.1)
     cb2.set_label('Direction (degree)')
@@ -865,6 +949,45 @@ def plot_2example_2metrics(imin, imax, ts_dangle, combined_score, date0_stack, d
     #    deltay_stack[i]),fontsize=12)
     cb1d = fig.colorbar(im1d, ax=ax[1,1], location='bottom', pad=0.1)
     cb1d.set_label('combined [0,1]')
+    fig.tight_layout()
+    fig.savefig(combined_scores_min_max_fname)
+
+
+def plot_2example_3metrics(imin, imax, ts_dangle, combined_score, ts_dangle_mask, date0_stack, date1_stack, deltay_stack,combined_scores_min_max_fname):
+    # plotting individual dates for 2 example (min/max quality)
+    fig, ax = plt.subplots(2, 3, figsize=(16, 12), dpi=300)
+
+    im0 = ax[0,0].imshow(ts_dangle[imax,:,:], cmap='viridis', vmin=0, vmax=1)
+    ax[0,0].set_title('MAX cos($\Delta$Angle) ID: %d (%s - %s, $\Delta$y=%1.1f)'%(imax,
+        datetime.strftime(datetime.strptime(str(int(date0_stack[imax])), "%Y%m%d"), "%Y-%m-%d"),
+        datetime.strftime(datetime.strptime(str(int(date1_stack[imax])), "%Y%m%d"), "%Y-%m-%d"),
+        deltay_stack[imax]), fontsize=12)
+    cb0 = fig.colorbar(im0, ax=ax[0,0], location='bottom', pad=0.1)
+    cb0.set_label('confidence [0,1]')
+    im0d = ax[0,1].imshow(combined_score[imax,:,:], cmap='plasma', vmin=0, vmax=1)
+    ax[0,1].set_title('MAX combined', fontsize=12) #ID: %d (%s - %s, $\Delta$y=%1.1f)'%(i,
+    cb0d = fig.colorbar(im0d, ax=ax[0,1], location='bottom', pad=0.1)
+    cb0d.set_label('combined [0,1]')
+    im0e = ax[0,2].imshow(ts_dangle_mask[imax,:,:], cmap='gray_r', vmin=0, vmax=1)
+    ax[0,2].set_title('Good value mask (1==True or good value)', fontsize=12) #ID: %d (%s - %s, $\Delta$y=%1.1f)'%(i,
+    cb0e = fig.colorbar(im0e, ax=ax[0,2], location='bottom', pad=0.1)
+    cb0e.set_label('mask')
+
+    im1 = ax[1,0].imshow(ts_dangle[imin,:,:], cmap='viridis', vmin=0, vmax=1)
+    ax[1,0].set_title('MIN cos($\Delta$Angle) ID: %d (%s - %s, $\Delta$y=%1.1f)'%(imin,
+        datetime.strftime(datetime.strptime(str(int(date0_stack[imin])), "%Y%m%d"), "%Y-%m-%d"),
+        datetime.strftime(datetime.strptime(str(int(date1_stack[imin])), "%Y%m%d"), "%Y-%m-%d"),
+        deltay_stack[imin]),fontsize=12)
+    cb1 = fig.colorbar(im1, ax=ax[1,0], location='bottom', pad=0.1)
+    cb1.set_label('confidence [0,1]')
+    im1d = ax[1,1].imshow(ts_dangle[imin,:,:], cmap='plasma', vmin=0, vmax=1)
+    ax[1,1].set_title('MIN combined', fontsize=12)# ID: %d (%s - %s, $\Delta$y=%1.1f)'%(i,
+    cb1d = fig.colorbar(im1d, ax=ax[1,1], location='bottom', pad=0.1)
+    cb1d.set_label('combined [0,1]')
+    im1e = ax[1,2].imshow(ts_dangle_mask[imin,:,:], cmap='gray_r', vmin=0, vmax=1)
+    ax[1,2].set_title('Good value mask (1==True or good value)', fontsize=12)# ID: %d (%s - %s, $\Delta$y=%1.1f)'%(i,
+    cb1d = fig.colorbar(im1e, ax=ax[1,2], location='bottom', pad=0.1)
+    cb1d.set_label('mask')
     fig.tight_layout()
     fig.savefig(combined_scores_min_max_fname)
 

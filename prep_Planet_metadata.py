@@ -7,9 +7,10 @@
 import glob, os, csv, sys, subprocess, argparse
 
 EXAMPLE = """example:
-  prep_Planet_metadata.py --offset_tif_fn PlanetScope_Data/aoi3/group[1-3]/disparity_maps/*_polyfit-F.tif \
-          --dx_confidence_tif_fn PlanetScope_Data/aoi3/group[1-3]/disparity_maps/*_polyfit-F_dx_confidence.tif \
-          --dy_confidence_tif_fn PlanetScope_Data/aoi3/group[1-3]/disparity_maps/*_polyfit-F_dy_confidence.tif \
+  prep_Planet_metadata.py --offset_tif_fn "disparity_maps/*_polyfit-F.tif" \
+          --dx_confidence_tif_fn "confidence/*_confidence.tif" \
+          --dy_confidence_tif_fn "confidence/*_confidence.tif" \
+          --mask_tif_fn "confidence/*_mask.tif" \
           --metadata_fn PS2_aoi3_metadata.txt --processor PS2
 """
 
@@ -27,6 +28,7 @@ def cmdLineParser():
     parser.add_argument('--processor', default='PS2', help='Chose processor among L8, PS2, PSB.SD. Will determine the naming structure of file.', required=False)
     parser.add_argument('--dx_confidence_tif_fn', default='', help='List of tif files containing confidence values for dx (same data can be used for dx and dy if required)', required=False)
     parser.add_argument('--dy_confidence_tif_fn', default='', help='List of tif files containing confidence values for dy. (same data can be used for dx and dy if required)', required=False)
+    parser.add_argument('--mask_tif_fn', default='', help='List of tif files containing mask for each time step (same for dx and dy)', required=False)
     return parser.parse_args()
 
 
@@ -98,6 +100,29 @@ if __name__ == '__main__':
     if len(filelist3) > 0:
         for i in range(len(filelist3)):
             cfile = os.path.basename(filelist3[i])
+            date0 = cfile.split('_')[1]
+            if args.processor == 'L8':
+                date1 = cfile.split('_')[2]
+            if args.processor == 'PSB.SD':
+                date1 = cfile.split('_')[2]
+            if args.processor == 'PS2':
+                date1 = cfile.split('_')[2]
+                if date1 == '1B':
+                    date1 = cfile.split('_')[3]
+
+            metadata_list.append([cfile, date0, date1])
+
+
+    filelist4 = []
+    if len(args.mask_tif_fn) > 0:
+        filelist_mask = glob.glob(args.mask_tif_fn)
+        filelist_mask.sort()
+        if len(args.mask_tif_fn) == 0:
+            filelist4 = filelist_mask
+            print('Found mask tif file')
+    if len(filelist4) > 0:
+        for i in range(len(filelist4)):
+            cfile = os.path.basename(filelist4[i])
             date0 = cfile.split('_')[1]
             if args.processor == 'L8':
                 date1 = cfile.split('_')[2]

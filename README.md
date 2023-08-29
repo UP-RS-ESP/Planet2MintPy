@@ -23,29 +23,60 @@ pip install install numba-progress
 
 You will need to set the PATH to the directory containing the python files for computing the confidence intervals:
 ```bash
-export PYTHONPATH=$PYTHONPATH:/home/bodo/Dropbox/Argentina/Planet2mintpy
+export PYTHONPATH=$PYTHONPATH:/home/bodo/Dropbox/soft/github/Planet2MintPy
 ```
 
 # Preparing dx, dy offset files from AMES for use with Mintpy
 
 ## Create confidence (uncertainties, weights) from offset values
 
+We generate confidence and mask value from the input offset files. 
+
+There exist several approaches and philosophies to calculate uncertainties (or weights or confidences)
+from image-correlation data. Here, we have implemented the following methods:
+
+*Method 1 (Useful for PlanetScope or other well-behaved datasets)*
+1. Perform a 2D median filter with kernel_size=9 (variable) for each time step separately. This smoothes each timestep.
+2. Take the median of all time steps to obtain an averaged value for each pixel.
+3. Calculate the angle difference between this averaged value and each time step (x and y offset). Take the cosine of the angle difference to obtain a value between 0 and 1. All angle differences larger than 90 degree will be set to 0.
+4. This will result in a pixel-based confidence value (or weight) - but the same value for x and y offsets.
+5. Output a mask file with pixels for each time step that have been flagged as: nan by the correation and 0 confidence value (angle difference above 90 degree). This is different for each time step.
+
+
+*Method 2 (Useful for PlanetScope or other well-behaved datasets)*
+1. Calculate the std. deviation of all directions through time.
+2. If std. deviation is larger than 45 degree (or a threshold angle), the terrain is not considered a landslide and masked out. This is useful for creating a mask of stable terrain.
+3. For the unstable terrain (i.e., landslides), calculate the angle difference between time-averaged averaged value and value at each time step. Take the cosine of the angle difference to obtain a value between 0 and 1. All angle differences larger than 90 degree will be set to 0.
+4. Create a mask that shows all unstable terrain (same mask for all time steps).
+
+
+*Method 3 (Useful for noisy offsets such as derived from Landsat and Sentinel 2)*
+1. Perform a 2D median filter with kernel_size=9 (variable) for each time step separately. This smoothes each timestep.
+2. Calculate angle difference between aspect direction derived from a DEM and offset direction. If larger than 45 degree (or a threshold value), the pixel and timestep receives 0 weight. Otherwise, the cosine of 2 * the angle difference is assigned as weight.
+
+Using method 1:
 ```bash
-python /home/bodo/Dropbox/Argentina/Planet2mintpy/create_offset_confidence.py \
-           --kernel_size 9 \
-           --offset_tif_fn "disparity_maps/*_polyfit-F.tif" \
-           --area_name aoi3 \
-           --npy_out_path npy \
-           --confidence_tif_out_path confidence \
-           --sensor PS2
+python /home/bodo/Dropbox/soft/github/Planet2MintPy/create_offset_confidence.py \
+    --method 1 \
+    --kernel_size 9 \
+    --threshold_angle 45 \
+    --threshold_size 1000 \
+    --offset_tif_fn "disparity_maps/*_polyfit-F.tif" \
+    --area_name aoi3 \
+    --npy_out_path npy \
+    --confidence_tif_out_path confidence \
+    --sensor PS2
 ```
+
+Several output PNG files are generated that provide useful information on the confidence calculations, masking, and statistics.
 
 ## Prepare Metadata file for MintPy
 ```bash
-python /home/bodo/Dropbox/Argentina/Planet2mintpy/prep_Planet_metadata.py \
+python /home/bodo/Dropbox/soft/github/Planet2MintPy/prep_Planet_metadata.py \
   --offset_tif_fn "disparity_maps/*_polyfit-F.tif" \
   --dx_confidence_tif_fn "confidence/*_confidence.tif" \
   --dy_confidence_tif_fn "confidence/*_confidence.tif" \
+  --mask_tif_fn "confidence/*_mask.tif" \
   --metadata_fn PS2_aoi3_metadata.txt --processor PS2
 ```
 
@@ -54,37 +85,45 @@ Importing data into the MintPy HDF5 relies on a config file. There are many opti
 
 ```bash
 mkdir mintpy
-sed -e 's#METAFILE_FN#/raid/PS2_aoi3/PS2_aoi3_metadata.txt#' \
-  -e 's#azOffFile_FN#/raid/PS2_aoi3/disparity_maps/*-F_EW.vrt#' \
-  -e 's#rgOffFile_FN#/raid/PS2_aoi3/disparity_maps/*-F_NS.vrt#' \
-  -e 's#azOffStdFile_FN#/raid/PS2_aoi3/confidence/*_confidence.tif#' \
-  -e 's#rgOffStdFile_FN#/raid/PS2_aoi3/confidence/*_confidence.tif#' \
-  /home/bodo/Dropbox/Argentina/Planet2mintpy/PS2_Mintpy_template.cfg \
-  >/raid/PS2_aoi3/mintpy/PS2_aoi3_config.cfg
+sed -e 's#METAFILE_FN#/raid/Planet_NWArg/PS2_aoi3/PS2_aoi3_metadata.txt#' \
+  -e 's#azOffFile_FN#/raid/Planet_NWArg/PS2_aoi3/disparity_maps/*-F_EW.vrt#' \
+  -e 's#rgOffFile_FN#/raid/Planet_NWArg/PS2_aoi3/disparity_maps/*-F_NS.vrt#' \
+  -e 's#azOffStdFile_FN#/raid/Planet_NWArg/PS2_aoi3/confidence/*_confidence.tif#' \
+  -e 's#rgOffStdFile_FN#/raid/Planet_NWArg/PS2_aoi3/confidence/*_confidence.tif#' \
+  -e 's#mask_FN#/raid/Planet_NWArg/PS2_aoi3/confidence/*_mask.tif#' \
+  /home/bodo/Dropbox/soft/github/Planet2MintPy/PS2_Mintpy_template.cfg \
+  >/raid/Planet_NWArg/PS2_aoi3/mintpy/PS2_aoi3_config.cfg
 ```
 
 ## Prepare HDF5 stack from PlanetScope data
 ```bash
-python /home/bodo/Dropbox/Argentina/Planet2mintpy/prep_Planet_stack.py \
-          --dx_fn "/raid/PS2_aoi3/disparity_maps/*-F_EW.vrt" \
-          --dy_fn "/raid/PS2_aoi3/disparity_maps/*-F_NS.vrt" \
-          --dx_confidence_fn "/raid/PS2_aoi3/confidence/*_confidence.tif" \
-          --dy_confidence_fn "/raid/PS2_aoi3/confidence/*_confidence.tif" \
-          --meta_file /raid/PS2_aoi3/PS2_aoi3_metadata.txt --pixel_size 3.0 \
-          --template_file /raid/PS2_aoi3/mintpy/PS2_aoi3_config.cfg \
-          --h5_stack_fn /raid/PS2_aoi3/mintpy/inputs/geo_offsetStack_aoi3.h5
+python /home/bodo/Dropbox/soft/github/Planet2MintPy/prep_Planet_stack.py \
+          --dx_fn "/raid/Planet_NWArg/PS2_aoi3/disparity_maps/*-F_EW.vrt" \
+          --dy_fn "/raid/Planet_NWArg/PS2_aoi3/disparity_maps/*-F_NS.vrt" \
+          --dx_confidence_fn "/raid/Planet_NWArg/PS2_aoi3/confidence/*_confidence.tif" \
+          --dy_confidence_fn "/raid/Planet_NWArg/PS2_aoi3/confidence/*_confidence.tif" \
+          --mask_fn "/raid/Planet_NWArg/PS2_aoi3/cconfidence/*_mask.tif" \
+          --meta_file /raid/Planet_NWArg/PS2_aoi3/PS2_aoi3_metadata.txt --pixel_size 3.0 \
+          --template_file /raid/Planet_NWArg/PS2_aoi3/mintpy/PS2_aoi3_config.cfg \
+          --h5_stack_fn /raid/Planet_NWArg/PS2_aoi3/mintpy/inputs/geo_offsetStack_aoi3.h5
 ```
 
 # SBAS Inversion with Mintpy
 set `-w no` for no weights
 
 ## Inversion with var and Std
+We define a mask data (`--md`) using the mask stored in *offsetSNR* and all values less than 0.5 (`--mt 0.5`) are ignored (or set to NaN). Because this is a boolean dataset with 0 and 1, only values with 1 are considered.
+
+An alternative way to mask data is to define the a threshold on the *OffsetStd*.
+
+We use the weights or confidence values (between 0 and 1) and calculate 1/weight as weights.
+
 ```bash
 cd raid/PS2_aoi3/mintpy/
-ifgram_inversion.py /raid/PS2_aoi3/mintpy/inputs/geo_offsetStack_aoi3.h5 \
-    --skip-reference -i azimuthOffset -w var -c local --num-worker 20 --mem 16 -o timeseriesAz_var.h5 residualInvAz_var.h5 numInvOffsetAz_var.h5
-ifgram_inversion.py /raid/PS2_aoi3/mintpy/inputs/geo_offsetStack_aoi3.h5 \
-    --skip-reference -i rangeOffset -w var -c local --num-worker 20 --mem 16 -o timeseriesRg_var.h5 residualInvRg_var.h5 numInvOffsetRg_var.h5
+ifgram_inversion.py /raid/Planet_NWArg/PS2_aoi3/mintpy/inputs/geo_offsetStack_aoi3.h5 \
+    --skip-reference -i azimuthOffset -w var --md offsetSNR --mt 0.5 -c local --num-worker 20 --mem 16 -o timeseriesAz_var.h5 residualInvAz_var.h5 numInvOffsetAz_var.h5
+ifgram_inversion.py /raid/Planet_NWArg/PS2_aoi3/mintpy/inputs/geo_offsetStack_aoi3.h5 \
+    --skip-reference -i rangeOffset -w var --md offsetSNR --mt 0.5 -c local --num-worker 20 --mem 16 -o timeseriesRg_var.h5 residualInvRg_var.h5 numInvOffsetRg_var.h5
 ```
 
 Display all time steps
@@ -122,10 +161,10 @@ save_gdal.py velocityRg_var.h5 velocity -o PS2_aoi3_velocity_ew_var.tif
 
 # Calculate velocity and direction from mean dx and dy files
 ```bash
-python /home/bodo/Dropbox/Argentina/Planet2mintpy/calc_velocity_from_AzRg.py \
-    --rg_file /raid/PS2_aoi3/mintpy/velocityRg_var.h5 \
-    --az_file /raid/PS2_aoi3/mintpy/velocityAz_var.h5 \
-    --HDF_outfile /raid/PS2_aoi3/mintpy/aoi3_var_velocity.h5 \
+python /home/bodo/Dropbox/soft/github/Planet2MintPy/calc_velocity_from_AzRg.py \
+    --rg_file /raid/Planet_NWArg/PS2_aoi3/mintpy/velocityRg_var.h5 \
+    --az_file /raid/Planet_NWArg/PS2_aoi3/mintpy/velocityAz_var.h5 \
+    --HDF_outfile /raid/Planet_NWArg/PS2_aoi3/mintpy/aoi3_var_velocity.h5 \
     --mask00 False
 ```
 
@@ -157,9 +196,9 @@ This will require more work - fix linear interpolation
 
 ```bash
 extract_mask_TS.py \
-    --az_ts_file /raid/PS2_aoi3/mintpy/timeseriesAz_var.h5 \
-    --rg_ts_file /raid/PS2_aoi3/mintpy/timeseriesRg_var.h5 \
-    --mask_file /raid/PS2_aoi3/mintpy/aoi3_var_velocity_mask.h5 \
+    --az_ts_file /raid/Planet_NWArg/PS2_aoi3/mintpy/timeseriesAz_var.h5 \
+    --rg_ts_file /raid/Planet_NWArg/PS2_aoi3/mintpy/timeseriesRg_var.h5 \
+    --mask_file /raid/Planet_NWArg/PS2_aoi3/mintpy/aoi3_var_velocity_mask.h5 \
     --HDF_outfile  /raid/PS2_aoi6/mintpy/aoi3_var_velocity_mask_ts.h5 \
     --npy_outfile /raid/PS2_aoi6/mintpy/aoi3_var_velocity_mask_ts.npy \
     --out_pngfname /raid/PS2_aoi6/mintpy/aoi3_var_velocity_mask_ts.png

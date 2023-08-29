@@ -66,7 +66,7 @@ if __name__ == '__main__':
     dxdy_size = ds.GetRasterBand(1).ReadAsArray().shape
     ds = None
 
-    #TODO: Loading all tif files into numpy array
+    # TODO: Loading all tif files into numpy array
     print('Loading offset dx, dy from TIF files and storing to numpy array')
     dx_stack, dy_stack = cc.load_tif_stacks(filelist, dxdy_size, mask=False)
     print('Calculating angles for each timestep and pixel')
