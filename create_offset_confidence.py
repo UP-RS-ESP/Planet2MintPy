@@ -88,7 +88,10 @@ def cmdLineParser():
     parser = argparse.ArgumentParser(description=DESCRIPTION, epilog=EXAMPLE, formatter_class=RawTextHelpFormatter)
     parser.add_argument('--method', default=1, type=np.int8, help='Confidence-value method to chose from. See Description.', required=True)
     parser.add_argument('--offset_tif_fn', help='2 Band offset file containing dx and dy data. Make sure to put into "quotes" when using wildcards (e.g., *).', required=True)
-    parser.add_argument('--mask', type=argparse.BooleanOptionalAction, default=False, help='Set to True if you have three-band TIF files and the third band contains the mask band.', required=False)
+    if sys.version_info[1] < 9:
+        parser.add_argument('--mask', type=bool, default=False, help='Set to True if you have three-band TIF files and the third band contains the mask band.', required=False)
+    else:
+        parser.add_argument('--mask', type=argparse.BooleanOptionalAction, default=False, help='Set to True if you have three-band TIF files and the third band contains the mask band.', required=False)
     parser.add_argument('--npy_out_path', default='npy', help='Output compressed numpy files', required=True)
     parser.add_argument('--threshold_angle', default=45, type=np.int8, help='Threshold angle in degree for filtering out angle deivations', required=False)
     parser.add_argument('--area_name', help='Name of area of interest', required=True)

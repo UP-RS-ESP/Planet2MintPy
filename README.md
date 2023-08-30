@@ -13,7 +13,7 @@ See also: [https://mintpy.readthedocs.io/en/latest/installation/](https://mintpy
 Additional packages are required for faster processing and calculating the confidence values:
 ```bash
 conda activate mintpy
-conda install pandas tqdm numba pytables rasterio -c conda-forge
+conda install pandas tqdm numba pytables -c conda-forge
 ```
 
 and a package via pip:
