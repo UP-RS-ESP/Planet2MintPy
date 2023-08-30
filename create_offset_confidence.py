@@ -98,7 +98,7 @@ def cmdLineParser():
     parser.add_argument('--threshold_size', default=0, type=np.int16, help='Threshold size in pixels to remove from mask image. Only continuous patches above this size are kept. Set to 10 or larger for useful results.', required=False)
     parser.add_argument('--confidence_tif_out_path', default='confidence', help='Output path for confidence files', required=False)
     parser.add_argument('-k', '--kernel_size', type=np.int8, default=9, help='Kernel Size for median filtering', required=False)
-    parser.add_argument('--sensor',  default='PS', help='Sensor Name - L8 or PS - for determining averaging method', required=False)
+    parser.add_argument('--sensor',  default='PS', help='Sensor Name - L8 or PS - for determining averaging method', required=False, choices =["PS", "L8"])
     return parser.parse_args()
 
 
