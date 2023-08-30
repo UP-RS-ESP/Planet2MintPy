@@ -30,7 +30,7 @@ create_offset_confidence.py \
     --area_name aoi3 \
     --npy_out_path npy \
     --confidence_tif_out_path confidence \
-    --sensor PS2
+    --sensor PS
 
 create_offset_confidence.py \
     --method 2 \
@@ -41,7 +41,7 @@ create_offset_confidence.py \
     --area_name aoi3 \
     --npy_out_path npy \
     --confidence_tif_out_path confidence \
-    --sensor PS2
+    --sensor PS
 
 
 example for L8 (will require DEM for directional filtering):
@@ -98,7 +98,7 @@ def cmdLineParser():
     parser.add_argument('--threshold_size', default=0, type=np.int16, help='Threshold size in pixels to remove from mask image. Only continuous patches above this size are kept. Set to 10 or larger for useful results.', required=False)
     parser.add_argument('--confidence_tif_out_path', default='confidence', help='Output path for confidence files', required=False)
     parser.add_argument('-k', '--kernel_size', type=np.int8, default=9, help='Kernel Size for median filtering', required=False)
-    parser.add_argument('--sensor',  default='PS2', help='Sensor Name - L8, PS2, PSB.SD - for determining averaging method', required=False)
+    parser.add_argument('--sensor',  default='PS', help='Sensor Name - L8 or PS - for determining averaging method', required=False)
     return parser.parse_args()
 
 
@@ -115,7 +115,7 @@ if __name__ == '__main__':
 #    args.area_name='aoi3'
 #    args.confidence_tif_out_path='confidence'
 #    args.kernel_size=9
-#    args.sensor='PS2'
+#    args.sensor='PS'
 #    args.threshold_size = 1000
 
 
@@ -166,7 +166,7 @@ if __name__ == '__main__':
 
     ### Convert TIF file and create numpy stack. Use mask and set pixels to NaN
     # load tif data and save as compressed npy
-    cc.load_data(filelist, dxdy_size, output_path = args.npy_out_path, area_fname = args.area_name, mask=False, sensor='PS2')
+    cc.load_data(filelist, dxdy_size, output_path = args.npy_out_path, area_fname = args.area_name, mask=False, sensor=args.sensor)
 
     ### Load time series data stored in npy files
     f = gzip.GzipFile(date0_stack_fname, "r")

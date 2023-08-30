@@ -383,12 +383,13 @@ def load_data(filelist, dxdy_size, output_path = 'npy', area_fname='DelMedio', m
         if sensor == 'L8':
             date0 = cfile_basename.split('_')[0]
             date1 = cfile_basename.split('_')[1]
-        elif sensor == 'L3B':
+        elif sensor == 'PS':
             date0 = cfile_basename.split('_')[0]
-            date1 = cfile_basename.split('_')[4]
-        elif sensor == 'PS2':
-            date0 = cfile_basename.split('_')[0]
-            date1 = cfile_basename.split('_')[3]
+            #need to distinguish between PSBSD and PS2 scene IDs
+            if len(cfile_basename.split('_')[3]) == 8:
+                date1 = cfile_basename.split('_')[3]
+            else:                 
+                date1 = cfile_basename.split('_')[4]
         delta_days = datetime.strptime(date1, "%Y%m%d") - datetime.strptime(date0, "%Y%m%d")
         delta_year = delta_days.days/365
         dx = dx / delta_year #units are pixels per year

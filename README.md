@@ -65,7 +65,7 @@ python /home/bodo/Dropbox/soft/github/Planet2MintPy/create_offset_confidence.py 
     --area_name aoi3 \
     --npy_out_path npy \
     --confidence_tif_out_path confidence \
-    --sensor PS2
+    --sensor PS
 ```
 
 Several output PNG files are generated that provide useful information on the confidence calculations, masking, and statistics:

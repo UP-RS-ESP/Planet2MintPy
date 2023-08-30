@@ -10,6 +10,7 @@ mkdir /home/bodo/Dropbox/Argentina/aoi3/
 export PYTHONPATH=$PYTHONPATH:/home/bodo/Dropbox/Argentina/Planet2mintpy
 python /home/bodo/Dropbox/soft/github/Planet2MintPy/create_offset_confidence.py \
            --kernel_size 9 \
+           --method 1 \
            --offset_tif_fn "disparity_maps/*_polyfit-F.tif" \
            --area_name aoi3 \
            --npy_out_path npy \
