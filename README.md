@@ -40,12 +40,12 @@ from image-correlation data. Here, we have implemented the following methods:
 2. Take the median of all time steps to obtain an averaged value for each pixel.
 3. Calculate the angle difference between this averaged value and each time step (x and y offset). Take the cosine of the angle difference to obtain a value between 0 and 1. All angle differences larger than 90 degree will be set to 0.
 4. This will result in a pixel-based confidence value (or weight) - but the same value for x and y offsets.
-5. Output a mask file with pixels for each time step that have been flagged as: nan by the correation and 0 confidence value (angle difference above 90 degree). This is different for each time step.
+5. Output a mask file with pixels for each time step that have been flagged as nan by the correlation and 0 confidence value (angle difference above 90 degree). This is different for each time step.
 
 
 *Method 2 (Useful for PlanetScope or other well-behaved datasets)*
-1. Calculate the std. deviation of all directions through time.
-2. If std. deviation is larger than 45 degree (or a threshold angle), the terrain is not considered a landslide and masked out. This is useful for creating a mask of stable terrain.
+1. Calculate the standard deviation of all directions through time.
+2. If standard. deviation is larger than 45 degree (or a threshold angle), the terrain is not considered a landslide and masked out. This is useful for creating a mask of stable terrain.
 3. For the unstable terrain (i.e., landslides), calculate the angle difference between time-averaged averaged value and value at each time step. Take the cosine of the angle difference to obtain a value between 0 and 1. All angle differences larger than 90 degree will be set to 0.
 4. Create a mask that shows all unstable terrain (same mask for all time steps).
 

@@ -26,7 +26,7 @@ python /home/bodo/Dropbox/soft/github/Planet2MintPy/prep_Planet_metadata.py \
   --offset_tif_fn "disparity_maps/*_polyfit-F.tif" \
   --dx_confidence_tif_fn "confidence/*_confidence.tif" \
   --dy_confidence_tif_fn "confidence/*_confidence.tif" \
-  --metadata_fn PS2_aoi3_metadata.txt --processor PS2
+  --metadata_fn PS2_aoi3_metadata.txt --sensor PS
 
 mkdir mintpy
 sed -e 's#METAFILE_FN#/raid/Planet_NWArg/PS2_aoi3/PS2_aoi3_metadata.txt#' \
