@@ -11,7 +11,7 @@ EXAMPLE = """example:
           --dx_confidence_tif_fn "confidence/*_confidence.tif" \
           --dy_confidence_tif_fn "confidence/*_confidence.tif" \
           --mask_tif_fn "confidence/*_mask.tif" \
-          --metadata_fn PS2_aoi3_metadata.txt --processor PS2
+          --metadata_fn PS2_aoi3_metadata.txt --sensor PS2
 """
 
 DESCRIPTION = """
@@ -25,7 +25,7 @@ def cmdLineParser():
     parser = argparse.ArgumentParser(description=DESCRIPTION, epilog=EXAMPLE, formatter_class=RawTextHelpFormatter)
     parser.add_argument('--offset_tif_fn', help='List of tif files containing dx and dy offsets corresponding to bands 1 and 2', required=True)
     parser.add_argument('-m', '--metadata_fn', help='Output text file containing metadata (to be read by mintpy)', required=True)
-    parser.add_argument('--processor', default='PS2', help='Chose processor among L8, PS2, PSB.SD. Will determine the naming structure of file.', required=False)
+    parser.add_argument('--sensor', default='PS', help='Chose sensor among L8 and PS. Will determine the naming structure of file.', required=False)
     parser.add_argument('--dx_confidence_tif_fn', default='', help='List of tif files containing confidence values for dx (same data can be used for dx and dy if required)', required=False)
     parser.add_argument('--dy_confidence_tif_fn', default='', help='List of tif files containing confidence values for dy. (same data can be used for dx and dy if required)', required=False)
     parser.add_argument('--mask_tif_fn', default='', help='List of tif files containing mask for each time step (same for dx and dy)', required=False)
@@ -64,19 +64,19 @@ if __name__ == '__main__':
         cfile = os.path.basename(filelist2[i])
         date0 = cfile.split('_')[0]
         time0 = cfile.split('_')[1]
-        if args.processor == 'L8':
+        if args.sensor == 'L8':
             date1 = cfile.split('_')[1]
             time0 = '0'
             time1 = '0'
-        if args.processor == 'PSB.SD':
-            date1 = cfile.split('_')[4]
-            time1 = cfile.split('_')[5]
-        if args.processor == 'PS2':
-            date1 = cfile.split('_')[3]
-            time1 = cfile.split('_')[4]
-            if date1 == '1B':
+        if args.sensor == 'PS':
+            #need to distinguish between PSBSD and PS2 scene IDs
+            if len(cfile.split('_')[3]) == 8:
+                date1 = cfile.split('_')[3]
+                time1 = cfile.split('_')[4]
+            else: 
                 date1 = cfile.split('_')[4]
                 time1 = cfile.split('_')[5]
+                
 
         metadata_list.append([cfile, date0, date1])
 
@@ -101,14 +101,14 @@ if __name__ == '__main__':
         for i in range(len(filelist3)):
             cfile = os.path.basename(filelist3[i])
             date0 = cfile.split('_')[1]
-            if args.processor == 'L8':
+            if args.sensor == 'L8':
                 date1 = cfile.split('_')[2]
-            if args.processor == 'PSB.SD':
-                date1 = cfile.split('_')[2]
-            if args.processor == 'PS2':
-                date1 = cfile.split('_')[2]
-                if date1 == '1B':
+            elif args.sensor == 'PS':
+                #need to distinguish between PSBSD and PS2 scene IDs
+                if len(cfile.split('_')[3]) == 8:
                     date1 = cfile.split('_')[3]
+                else: 
+                    date1 = cfile.split('_')[4]
 
             metadata_list.append([cfile, date0, date1])
 
@@ -124,14 +124,14 @@ if __name__ == '__main__':
         for i in range(len(filelist4)):
             cfile = os.path.basename(filelist4[i])
             date0 = cfile.split('_')[1]
-            if args.processor == 'L8':
+            if args.sensor == 'L8':
                 date1 = cfile.split('_')[2]
-            if args.processor == 'PSB.SD':
-                date1 = cfile.split('_')[2]
-            if args.processor == 'PS2':
-                date1 = cfile.split('_')[2]
-                if date1 == '1B':
+            elif args.sensor == 'PS':
+                #need to distinguish between PSBSD and PS2 scene IDs
+                if len(cfile.split('_')[3]) == 8:
                     date1 = cfile.split('_')[3]
+                else: 
+                    date1 = cfile.split('_')[4]
 
             metadata_list.append([cfile, date0, date1])
 
