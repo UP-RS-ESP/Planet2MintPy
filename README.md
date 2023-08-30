@@ -87,7 +87,7 @@ python /home/bodo/Dropbox/soft/github/Planet2MintPy/prep_Planet_metadata.py \
   --dx_confidence_tif_fn "confidence/*_confidence.tif" \
   --dy_confidence_tif_fn "confidence/*_confidence.tif" \
   --mask_tif_fn "confidence/*_mask.tif" \
-  --metadata_fn PS2_aoi3_metadata.txt --processor PS2
+  --metadata_fn PS2_aoi3_metadata.txt --sensor PS
 ```
 
 ## Create Config file for MintPy import

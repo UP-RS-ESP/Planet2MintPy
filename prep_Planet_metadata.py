@@ -101,14 +101,7 @@ if __name__ == '__main__':
         for i in range(len(filelist3)):
             cfile = os.path.basename(filelist3[i])
             date0 = cfile.split('_')[1]
-            if args.sensor == 'L8':
-                date1 = cfile.split('_')[2]
-            elif args.sensor == 'PS':
-                #need to distinguish between PSBSD and PS2 scene IDs
-                if len(cfile.split('_')[3]) == 8:
-                    date1 = cfile.split('_')[3]
-                else: 
-                    date1 = cfile.split('_')[4]
+            date1 = cfile.split('_')[2]
 
             metadata_list.append([cfile, date0, date1])
 
@@ -124,14 +117,8 @@ if __name__ == '__main__':
         for i in range(len(filelist4)):
             cfile = os.path.basename(filelist4[i])
             date0 = cfile.split('_')[1]
-            if args.sensor == 'L8':
-                date1 = cfile.split('_')[2]
-            elif args.sensor == 'PS':
-                #need to distinguish between PSBSD and PS2 scene IDs
-                if len(cfile.split('_')[3]) == 8:
-                    date1 = cfile.split('_')[3]
-                else: 
-                    date1 = cfile.split('_')[4]
+            date1 = cfile.split('_')[2]
+
 
             metadata_list.append([cfile, date0, date1])
 
