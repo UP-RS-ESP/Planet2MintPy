@@ -388,7 +388,7 @@ def load_data(filelist, dxdy_size, output_path = 'npy', area_fname='DelMedio', m
             #need to distinguish between PSBSD and PS2 scene IDs
             if len(cfile_basename.split('_')[3]) == 8:
                 date1 = cfile_basename.split('_')[3]
-            else:                 
+            else:
                 date1 = cfile_basename.split('_')[4]
         delta_days = datetime.strptime(date1, "%Y%m%d") - datetime.strptime(date0, "%Y%m%d")
         delta_year = delta_days.days/365
@@ -762,11 +762,13 @@ def plot_dxdy_median(dx_stack_median_ar, dy_stack_median_ar, dx_stack_var_ar, dy
     ax[0,1].set_title('Dy median stack of 7x7 median filter (n=%d)'%nre, fontsize=14)
     cb1 = fig.colorbar(im1, ax=ax[0,1], location='bottom', pad=0.1)
     cb1.set_label('dy offset (px)')
-    im2 = ax[1,0].imshow(dx_stack_var_ar, cmap='viridis', vmin=0, vmax=0.1)
+    vmax_lb = np.round(np.nanpercentile(dx_stack_var_ar,2),98)
+    im2 = ax[1,0].imshow(dx_stack_var_ar, cmap='viridis', vmin=0, vmax=vmax_lb)
     ax[1,0].set_title('Dx variance stack of 7x7 median filter (n=%d)'%nre, fontsize=14)
     cb2 = fig.colorbar(im2, ax=ax[1,0], location='bottom', pad=0.1)
     cb2.set_label('dx offset variance (px)')
-    im3 = ax[1,1].imshow(dy_stack_var_ar, cmap='viridis', vmin=0, vmax=0.1)
+    vmax_lb = np.round(np.nanpercentile(dy_stack_var_ar,2),98)
+    im3 = ax[1,1].imshow(dy_stack_var_ar, cmap='viridis', vmin=0, vmax=vmax_lb)
     ax[1,1].set_title('Dy variance stack of 7x7 median filter (n=%d)'%nre, fontsize=14)
     cb3 = fig.colorbar(im3, ax=ax[1,1], location='bottom', pad=0.1)
     cb3.set_label('dy offset variance (px)')
@@ -820,11 +822,12 @@ def plot_direction_magnitude(direction_stack_median, magnitude_stack_median, dir
     im2 = ax[1,0].imshow(direction_stack_var, cmap='viridis', vmin=0, vmax=45)
     ax[1,0].set_title('Velocity Direction variance (n=%d)'%nre, fontsize=14)
     cb2 = fig.colorbar(im2, ax=ax[1,0], location='bottom', pad=0.1)
-    cb2.set_label('Direction (degree)')
-    im3 = ax[1,1].imshow(magnitude_stack_var, cmap='viridis', vmin=0, vmax=0.1)
+    cb2.set_label('Direction variance (degree)')
+    vmax_lb = np.round(np.nanpercentile(magnitude_stack_var,2),98)
+    im3 = ax[1,1].imshow(magnitude_stack_var, cmap='viridis', vmin=0, vmax=vmax_lb)
     ax[1,1].set_title('Velocity Magnitude variance (n=%d)'%nre, fontsize=14)
     cb3 = fig.colorbar(im3, ax=ax[1,1], location='bottom', pad=0.1)
-    cb3.set_label('Magnitude (px/y)')
+    cb3.set_label('Magnitude variance (px/y)')
     fig.tight_layout()
     fig.savefig(stack_median_direction_magntitude_4plots_fname)
 

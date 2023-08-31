@@ -30,7 +30,7 @@ export PYTHONPATH=$PYTHONPATH:/home/bodo/Dropbox/soft/github/Planet2MintPy
 
 ## Create confidence (uncertainties, weights) from offset values
 
-We generate confidence and mask value from the input offset files. 
+We generate confidence and mask value from the input offset files.
 
 There exist several approaches and philosophies to calculate uncertainties (or weights or confidences)
 from image-correlation data. Here, we have implemented the following methods:
@@ -65,7 +65,7 @@ python /home/bodo/Dropbox/soft/github/Planet2MintPy/create_offset_confidence.py 
     --area_name aoi3 \
     --npy_out_path npy \
     --confidence_tif_out_path confidence \
-    --sensor PS
+    --sensor PS 2>&1 | tail create_offset_confidence.py.log
 ```
 
 Several output PNG files are generated that provide useful information on the confidence calculations, masking, and statistics:

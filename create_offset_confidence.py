@@ -2,10 +2,6 @@
 # Created by Bodo Bookhagen and Ariane Mueting, August 2023 #
 #############################################################
 
-# Make sure to install a proper conda environment
-# conda create -n CC python=3.11 numpy scipy pandas matplotlib ipython cupy tqdm numba -c conda-forge
-# pip install install numba-progress
-
 import glob, os, csv, sys, subprocess, tqdm, gzip, argparse
 from datetime import datetime
 from osgeo import gdal
@@ -89,7 +85,7 @@ def cmdLineParser():
     parser.add_argument('--method', default=1, type=np.int8, help='Confidence-value method to chose from. See Description.', required=True)
     parser.add_argument('--offset_tif_fn', help='2 Band offset file containing dx and dy data. Make sure to put into "quotes" when using wildcards (e.g., *).', required=True)
     if sys.version_info[1] < 9:
-        parser.add_argument('--mask', type=bool, default=False, help='Set to True if you have three-band TIF files and the third band contains the mask band.', required=False)
+        parser.add_argument('--mask', type=bool, default=False, help='Set to True if you have three-band TIF files and the third band contains the mask band (default=False).', required=False)
     else:
         parser.add_argument('--mask', type=argparse.BooleanOptionalAction, default=False, help='Set to True if you have three-band TIF files and the third band contains the mask band.', required=False)
     parser.add_argument('--npy_out_path', default='npy', help='Output compressed numpy files', required=True)
@@ -159,6 +155,7 @@ if __name__ == '__main__':
     filelist = glob.glob(args.offset_tif_fn)
     filelist.sort()
     #need an input tif to obtain projection information - use first file
+    print('Open one tif to obtain geodata information')
     input_tif = filelist[0]
     ds = gdal.Open(input_tif)
     dxdy_size = ds.GetRasterBand(1).ReadAsArray().shape

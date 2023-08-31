@@ -29,6 +29,7 @@ prep_Planet_stack.py \
           --dy_fn "disparity_maps/*-F_NS.vrt" \
           --dx_confidence_fn "confidence/*_confidence.tif" \
           --dy_confidence_fn "confidence/*_confidence.tif" \
+          --mask_fn "confidence/*_mask.tif" \
           --meta_file /raid/PS2_aoi3/PS2_aoi3_metadata.txt --pixel_size 3.0 \
           --template_file /raid/PS2_aoi3/mintpy/PS2_aoi3_config.cfg \
           --h5_stack_fn /raid/PS2_aoi3/mintpy/inputs/geo_offsetStack_aoi3.h5 \
@@ -48,6 +49,7 @@ def cmdLineParser():
     parser.add_argument('--dy_fn', help='List of dy files', required=True)
     parser.add_argument('--dx_confidence_fn', help='List of dx confidence files', required=False)
     parser.add_argument('--dy_confidence_fn', help='List of dy confidence files', required=False)
+    parser.add_argument('--mask_fn', help='List of mask files. Only pixels with 1 are used for the inversion.', required=False)
     parser.add_argument('-m', '--meta_file', help='Metadata file (created with prep_Planet_metadats.py)', required=True)
     parser.add_argument('-p', '--pixel_size', type=np.float32, default=3.0, help='Pixel Size in m', required=False)
     parser.add_argument('--template_file',  help='Template file containing directories and processing information for MintPy.', required=True)
@@ -847,7 +849,7 @@ if __name__ == '__main__':
     inps.updateMode='auto'
     inps.template_file = [inps.template_file] #make sure that this is a list
     # inps.file = ["disparity_maps/*-F_EW.vrt", "disparity_maps/*-F_NS.vrt", "confidence/*_confidence.tif", "confidence/*_confidence.tif"]
-    inps.file = [inps.dx_fn,  inps.dy_fn, inps.dx_confidence_fn, inps.dy_confidence_fn]
+    inps.file = [inps.dx_fn,  inps.dy_fn, inps.dx_confidence_fn, inps.dy_confidence_fn, inps.mask_fn]
     inps.file = ut.get_file_list(inps.file, abspath=True)
     inps.compression = 'lzf'
     prep_AMES(inps, pixel_size=inps.pixel_size)

@@ -5,9 +5,10 @@
 # cd PS2_aoi3
 # mkdir disparity_maps
 # rsync -avz bodo@manaslu:/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi3/group[1-3]/disparity_maps/*_polyfit-F.tif disparity_maps
-rsync -avz bodo@manaslu:/raid-manaslu/amueting/PhD/Project3/DEM_Data/clips/CopernicusDEM_clip_aoi3.tif .
+# rsync -avz bodo@manaslu:/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi3/PSBSD/disparity_maps/*_polyfit-F.tif disparity_maps
+# rsync -avz bodo@manaslu:/raid-manaslu/amueting/PhD/Project3/DEM_Data/clips/CopernicusDEM_clip_aoi3.tif .
 mkdir /home/bodo/Dropbox/Argentina/aoi3/
-export PYTHONPATH=$PYTHONPATH:/home/bodo/Dropbox/Argentina/Planet2mintpy
+export PYTHONPATH=$PYTHONPATH:/home/bodo/Dropbox/soft/github/Planet2mintpy
 python /home/bodo/Dropbox/soft/github/Planet2MintPy/create_offset_confidence.py \
            --kernel_size 9 \
            --method 1 \
@@ -15,7 +16,19 @@ python /home/bodo/Dropbox/soft/github/Planet2MintPy/create_offset_confidence.py 
            --area_name aoi3 \
            --npy_out_path npy \
            --confidence_tif_out_path confidence \
-           --sensor PS
+           --sensor PS 2>&1 | tail create_offset_confidence.py.log
+
+# python /home/bodo/Dropbox/soft/github/Planet2MintPy/create_offset_confidence.py \
+#    --method 2 \
+#    --kernel_size 9 \
+#    --threshold_angle 45 \
+#    --threshold_size 1000 \
+#    --offset_tif_fn "disparity_maps/*_polyfit-F.tif" \
+#    --area_name aoi3 \
+#    --npy_out_path npy2 \
+#    --confidence_tif_out_path confidence \
+#    --sensor PS 2>&1 | tail create_offset_confidence.py.log
+
 
 python /home/bodo/Dropbox/soft/github/Planet2MintPy/generate_landslide_mask.py \
           --offset_tif_fn "disparity_maps/*_polyfit-F.tif" \
@@ -26,6 +39,7 @@ python /home/bodo/Dropbox/soft/github/Planet2MintPy/prep_Planet_metadata.py \
   --offset_tif_fn "disparity_maps/*_polyfit-F.tif" \
   --dx_confidence_tif_fn "confidence/*_confidence.tif" \
   --dy_confidence_tif_fn "confidence/*_confidence.tif" \
+  --mask_fn "confidence/*_mask.tif" \
   --metadata_fn PS2_aoi3_metadata.txt --sensor PS
 
 mkdir mintpy
