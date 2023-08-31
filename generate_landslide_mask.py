@@ -8,7 +8,6 @@ import numpy as np
 import os
 import argparse
 import glob
-from scipy.stats import circstd
 from skimage import measure
 from skimage.morphology import closing, disk
 import matplotlib
@@ -17,6 +16,7 @@ import matplotlib.pyplot as plt
 import gzip
 import correlation_confidence as cc
 from osgeo import gdal
+import h5py
 
 DESCRIPTION = """
 Create binary mask of landslide bodies based on the standard deviation of movement direction.
@@ -123,3 +123,7 @@ if __name__ == '__main__':
             np.save(file=f, arr=mask)
             f.close()
             f = None
+            
+            h5f = h5py.File(f"{args.npy_out_path}/{args.area_name}_region{region}.h5", 'w')
+            h5f.create_dataset(f"region{region}", data=mask)
+            h5f.close()
