@@ -126,5 +126,5 @@ if __name__ == '__main__':
             f.close()
             f = None
             #write h5 mask
-            writefile.write({"mask": mask}, f"masks/{args.area_name}_region{region}.npy.gz", ref_file = filelist[0], compression = "gzip")
+            writefile.write({"mask": mask}, f"masks/{args.area_name}_region{region}.h5", ref_file = filelist[0], compression = "gzip")
             
