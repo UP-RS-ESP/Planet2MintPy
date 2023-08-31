@@ -74,10 +74,10 @@ if __name__ == '__main__':
             if len(cfile.split('_')[3]) == 8:
                 date1 = cfile.split('_')[3]
                 time1 = cfile.split('_')[4]
-            else: 
+            else:
                 date1 = cfile.split('_')[4]
                 time1 = cfile.split('_')[5]
-                
+
         metadata_list.append([cfile, date0, date1])
 
     filelist3 = []
@@ -110,7 +110,7 @@ if __name__ == '__main__':
     if len(args.mask_tif_fn) > 0:
         filelist_mask = glob.glob(args.mask_tif_fn)
         filelist_mask.sort()
-        if len(args.mask_tif_fn) == 0:
+        if len(filelist_mask) > 0:
             filelist4 = filelist_mask
             print('Found mask tif file')
     if len(filelist4) > 0:
@@ -118,8 +118,6 @@ if __name__ == '__main__':
             cfile = os.path.basename(filelist4[i])
             date0 = cfile.split('_')[1]
             date1 = cfile.split('_')[2]
-
-
             metadata_list.append([cfile, date0, date1])
 
     # write metadata to file

@@ -16,7 +16,7 @@ python /home/bodo/Dropbox/soft/github/Planet2MintPy/create_offset_confidence.py 
            --area_name aoi3 \
            --npy_out_path npy \
            --confidence_tif_out_path confidence \
-           --sensor PS 2>&1 | tail create_offset_confidence.py.log
+           --sensor PS 2>&1 | tee create_offset_confidence.py.log
 
 # python /home/bodo/Dropbox/soft/github/Planet2MintPy/create_offset_confidence.py \
 #    --method 2 \
@@ -27,19 +27,23 @@ python /home/bodo/Dropbox/soft/github/Planet2MintPy/create_offset_confidence.py 
 #    --area_name aoi3 \
 #    --npy_out_path npy2 \
 #    --confidence_tif_out_path confidence \
-#    --sensor PS 2>&1 | tail create_offset_confidence.py.log
+#    --sensor PS 2>&1 | tee create_offset_confidence.py.log
 
 
 python /home/bodo/Dropbox/soft/github/Planet2MintPy/generate_landslide_mask.py \
           --offset_tif_fn "disparity_maps/*_polyfit-F.tif" \
           --area_name aoi3 \
-          --npy_out_path masks
+          --npy_out_path masks \
+          --threshold_angle 45 \
+          --threshold_size 5000 \
+          --out_pngfname aoi3_landslide_mask.png
+
 
 python /home/bodo/Dropbox/soft/github/Planet2MintPy/prep_Planet_metadata.py \
   --offset_tif_fn "disparity_maps/*_polyfit-F.tif" \
   --dx_confidence_tif_fn "confidence/*_confidence.tif" \
   --dy_confidence_tif_fn "confidence/*_confidence.tif" \
-  --mask_fn "confidence/*_mask.tif" \
+  --mask_tif_fn "confidence/*_mask.tif" \
   --metadata_fn PS2_aoi3_metadata.txt --sensor PS
 
 mkdir mintpy
@@ -49,6 +53,7 @@ sed -e 's#METAFILE_FN#/raid/Planet_NWArg/PS2_aoi3/PS2_aoi3_metadata.txt#' \
   -e 's#azOffStdFile_FN#/raid/Planet_NWArg/PS2_aoi3/confidence/*_confidence.tif#' \
   -e 's#rgOffStdFile_FN#/raid/Planet_NWArg/PS2_aoi3/confidence/*_confidence.tif#' \
   -e 's#demFile_FN#/raid/Planet_NWArg/PS2_aoi3/CopernicusDEM_clip_aoi3.tif#' \
+  -e 's#mask_FN#/raid/Planet_NWArg/PS2_aoi3/confidence/*_mask.tif#' \
   /home/bodo/Dropbox/soft/github/Planet2MintPy/PS2_Mintpy_template.cfg \
   >/raid/Planet_NWArg/PS2_aoi3/mintpy/PS2_aoi3_config.cfg
 
@@ -57,15 +62,16 @@ python /home/bodo/Dropbox/soft/github/Planet2MintPy/prep_Planet_stack.py \
           --dy_fn "/raid/Planet_NWArg/PS2_aoi3/disparity_maps/*-F_NS.vrt" \
           --dx_confidence_fn "/raid/Planet_NWArg/PS2_aoi3/confidence/*_confidence.tif" \
           --dy_confidence_fn "/raid/Planet_NWArg/PS2_aoi3/confidence/*_confidence.tif" \
+          --mask_fn "confidence/*_mask.tif" \
           --meta_file /raid/Planet_NWArg/PS2_aoi3/PS2_aoi3_metadata.txt --pixel_size 3.0 \
           --template_file /raid/Planet_NWArg/PS2_aoi3/mintpy/PS2_aoi3_config.cfg \
           --h5_stack_fn /raid/Planet_NWArg/PS2_aoi3/mintpy/inputs/geo_offsetStack_aoi3.h5
 
 cd /raid/Planet_NWArg/PS2_aoi3/mintpy/
 ifgram_inversion.py /raid/Planet_NWArg/PS2_aoi3/mintpy/inputs/geo_offsetStack_aoi3.h5 \
-    --skip-reference -i azimuthOffset -w var -c local --num-worker 20 --mem 16 -o timeseriesAz_var.h5 residualInvAz_var.h5 numInvOffsetAz_var.h5
+    --skip-reference -i azimuthOffset --md offsetSNR --mt 0.5 -w var -c local --num-worker 20 --mem 16 -o timeseriesAz_var.h5 residualInvAz_var.h5 numInvOffsetAz_var.h5
 ifgram_inversion.py /raid/Planet_NWArg/PS2_aoi3/mintpy/inputs/geo_offsetStack_aoi3.h5 \
-    --skip-reference -i rangeOffset -w var -c local --num-worker 20 --mem 16 -o timeseriesRg_var.h5 residualInvRg_var.h5 numInvOffsetRg_var.h5
+    --skip-reference -i rangeOffset --md offsetSNR --mt 0.5 -w var -c local --num-worker 20 --mem 16 -o timeseriesRg_var.h5 residualInvRg_var.h5 numInvOffsetRg_var.h5
 
 view.py timeseriesAz_var.h5 --nodisplay --vlim -2 2 -u m --title "PS2 var: Az (NS) timeseries" -c RdYlBu --save -o PS2_ts_NS_var.png
 view.py timeseriesRg_var.h5 --nodisplay --vlim -2 2 -u m --title "PS2 var: Rg (EW) timeseries" -c RdYlBu --save -o PS2_ts_EW_var.png

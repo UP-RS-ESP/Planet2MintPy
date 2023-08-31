@@ -150,6 +150,8 @@ if __name__ == '__main__':
     date1_stack_fname = area_name + "_date1.npy.gz"
     deltay_stack_fname = area_name + "_deltay.npy.gz"
     ts_dangle_mask_npy_fname = area_name + '_filtered_ts_dangle_mask.npy.gz'
+    directions_sd_mask_npy_fname = area_name + '_directions_sd_mask.npy.gz'
+    directions_sd_mask_geotiff_fname = area_name + '_directions_sd_mask.tif'
 
     # load first dataset and get size of array
     filelist = glob.glob(args.offset_tif_fn)
@@ -589,8 +591,14 @@ if __name__ == '__main__':
         cc.plot_direction_sd_mask(directions_sd, mask, date0_stack.shape[0], directions_sd_fname)
 
         # write directions to geotiff
-        cc.write_Geotiff(input_tif, directions_sd, area_name + '_directions_sd.tif')
+        cc.write_Geotiff(input_tif, mask, directions_sd_mask_geotiff_fname)
 
+        # write filtered mask to numpy array
+        if os.path.exists(directions_sd_mask_npy_fname) is False:
+            f = gzip.GzipFile(directions_sd_mask_npy_fname, "w")
+            np.save(file=f, arr=mask)
+            f.close()
+            f = None
 
         # Use mask (only valid areas) and calculate confidence from direction offset only for landslide areas
 
