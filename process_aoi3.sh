@@ -33,7 +33,7 @@ python /home/bodo/Dropbox/soft/github/Planet2MintPy/create_offset_confidence.py 
 python /home/bodo/Dropbox/soft/github/Planet2MintPy/generate_landslide_mask.py \
           --offset_tif_fn "disparity_maps/*_polyfit-F.tif" \
           --area_name aoi3 \
-          --npy_out_path masks \
+          --mask_out_path masks \
           --threshold_angle 45 \
           --threshold_size 5000 \
           --out_pngfname aoi3_landslide_mask.png
