@@ -37,7 +37,7 @@ def cmdLineParser():
     from argparse import RawTextHelpFormatter
     parser = argparse.ArgumentParser(description=DESCRIPTION, formatter_class=RawTextHelpFormatter)
     parser.add_argument('--offset_tif_fn', help='2 Band offset file containing dx and dy data. Make sure to put into "quotes" when using wildcards (e.g., *).', required=True)
-    parser.add_argument('--npy_out_path', help='Output compressed numpy files', required=True)
+    parser.add_argument('--mask_out_path', help='Output mask files', required=True)
     parser.add_argument('--area_name', help='Name of area of interest', required=True)
     parser.add_argument('--out_pngfname', default='', help='Output PNG showing directional standard deviations, mask, and labels', required=False)
     parser.add_argument('-ta', '--threshold_angle', type=np.int8, default=45, help='Threshold of direction standard deviation in degrees', required=False)
@@ -120,11 +120,11 @@ if __name__ == '__main__':
         if region != 0:
             #write mask as npy file
             mask = np.where(labeled == region, 1, 0)
-            out_fn = f"{args.npy_out_path}/{args.area_name}_region{region}.npy.gz"
+            out_fn = f"{args.mask_out_path}/{args.area_name}_region{region}.npy.gz"
             f = gzip.GzipFile(out_fn, "w")
             np.save(file=f, arr=mask)
             f.close()
             f = None
             #write h5 mask
-            writefile.write({"mask": mask}, f"masks/{args.area_name}_region{region}.h5", ref_file = filelist[0], compression = "gzip")
+            writefile.write({"mask": mask}, f"{args.mask_out_path}/{args.area_name}_region{region}.h5", ref_file = filelist[0], compression = "gzip")
             
