@@ -16,7 +16,8 @@ import matplotlib.pyplot as plt
 import gzip
 import correlation_confidence as cc
 from osgeo import gdal
-import h5py
+from mintpy.utils import writefile
+
 
 DESCRIPTION = """
 Create binary mask of landslide bodies based on the standard deviation of movement direction.
@@ -117,13 +118,13 @@ if __name__ == '__main__':
 
     for region in np.unique(labeled):
         if region != 0:
+            #write mask as npy file
             mask = np.where(labeled == region, 1, 0)
             out_fn = f"{args.npy_out_path}/{args.area_name}_region{region}.npy.gz"
             f = gzip.GzipFile(out_fn, "w")
             np.save(file=f, arr=mask)
             f.close()
             f = None
+            #write h5 mask
+            writefile.write({"mask": mask}, f"masks/{args.area_name}_region{region}.npy.gz", ref_file = filelist[0], compression = "gzip")
             
-            h5f = h5py.File(f"{args.npy_out_path}/{args.area_name}_region{region}.h5", 'w')
-            h5f.create_dataset(f"region{region}", data=mask)
-            h5f.close()
