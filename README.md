@@ -1,4 +1,4 @@
-# Prepare files from offset calculation for MintPy processing"
+# Prepare files from offset calculation for MintPy processing
 Authors: **Ariane Mueting** and **Bodo Bookhagen**
 
 # Setup Computing Environment
