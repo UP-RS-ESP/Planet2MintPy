@@ -8,7 +8,6 @@ import numpy as np
 import os
 import argparse
 import glob
-from scipy.stats import circstd
 from skimage import measure
 from skimage.morphology import closing, disk
 import matplotlib
@@ -17,6 +16,8 @@ import matplotlib.pyplot as plt
 import gzip
 import correlation_confidence as cc
 from osgeo import gdal
+from mintpy.utils import writefile
+
 
 DESCRIPTION = """
 Create binary mask of landslide bodies based on the standard deviation of movement direction.
@@ -26,7 +27,7 @@ EXAMPLE = """example:
 generate_landslide_mask.py \
     --offset_tif_fn "disparity_maps/*_polyfit-F.tif" \
     --area_name aoi3 \
-    --npy_out_path masks2 \
+    --mask_out_path masks2 \
     --threshold_angle 45 \
     --threshold_size 5000 \
     --out_pngfname aoi3_landslide_mask.png
@@ -36,7 +37,7 @@ def cmdLineParser():
     from argparse import RawTextHelpFormatter
     parser = argparse.ArgumentParser(description=DESCRIPTION, formatter_class=RawTextHelpFormatter)
     parser.add_argument('--offset_tif_fn', help='2 Band offset file containing dx and dy data. Make sure to put into "quotes" when using wildcards (e.g., *).', required=True)
-    parser.add_argument('--npy_out_path', help='Output compressed numpy files', required=True)
+    parser.add_argument('--mask_out_path', help='Output mask files', required=True)
     parser.add_argument('--area_name', help='Name of area of interest', required=True)
     parser.add_argument('--out_pngfname', default='', help='Output PNG showing directional standard deviations, mask, and labels', required=False)
     parser.add_argument('-ta', '--threshold_angle', type=np.int8, default=45, help='Threshold of direction standard deviation in degrees', required=False)
@@ -54,7 +55,7 @@ if __name__ == '__main__':
     # args = parser.parse_args()
     # args.offset_tif_fn = "disparity_maps/*_polyfit-F.tif"
     # args.area_name = "aoi3"
-    # args.npy_out_path = 'masks'
+    # args.mask_out_path = 'masks'
     # args.threshold_angle = 45
     # args.threshold_size = 5000
 
@@ -94,8 +95,8 @@ if __name__ == '__main__':
     closed = closing(filtered_mask, footprint)
     labeled = measure.label(closed, background=0, connectivity=2)
 
-    if not os.path.exists(args.npy_out_path):
-        os.makedirs(args.npy_out_path)
+    if not os.path.exists(args.mask_out_path):
+        os.makedirs(args.mask_out_path)
 
     if len(args.out_pngfname) > 0:
         print('Create output PNG')
@@ -117,9 +118,13 @@ if __name__ == '__main__':
 
     for region in np.unique(labeled):
         if region != 0:
+            #write mask as npy file
             mask = np.where(labeled == region, 1, 0)
-            out_fn = f"{args.npy_out_path}/{args.area_name}_region{region}.npy.gz"
+            out_fn = f"{args.mask_out_path}/{args.area_name}_region{region}.npy.gz"
             f = gzip.GzipFile(out_fn, "w")
             np.save(file=f, arr=mask)
             f.close()
             f = None
+            #write h5 mask
+            writefile.write({"mask": mask}, f"{args.mask_out_path}/{args.area_name}_region{region}.h5", ref_file = filelist[0], compression = "gzip")
+            
