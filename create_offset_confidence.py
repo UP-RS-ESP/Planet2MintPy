@@ -406,7 +406,7 @@ if __name__ == '__main__':
 
 
         # ### combine the metrics into one score
-        combined_score = ts_dangle
+        combined_score = 1 / ts_dangle
         # combined_score = ts_dangle*dx_mZscore*dy_mZscore
         if os.path.exists(combined_score_npy_fname) is False:
             f = gzip.GzipFile(combined_score_npy_fname, "w")
@@ -537,7 +537,7 @@ if __name__ == '__main__':
         # Export Angle difference to tif files (each time step)
         if os.path.exists(args.confidence_tif_out_path) == False:
             os.mkdir(args.confidence_tif_out_path)
-        cc.write_Geotiff_ts(input_tif, ts_dangle, date0_stack, date1_stack,
+        cc.write_Geotiff_ts(input_tif, combined_score, date0_stack, date1_stack,
                 output_prefix=args.area_name, output_postfix='confidence', output_dir=args.confidence_tif_out_path)
         cc.write_Geotiff_ts(input_tif, ts_dangle_mask, date0_stack, date1_stack,
                                             output_prefix=args.area_name, output_postfix='mask', output_dir=args.confidence_tif_out_path)
@@ -603,6 +603,8 @@ if __name__ == '__main__':
             f = None
 
         # Use mask (only valid areas) and calculate confidence from direction offset only for landslide areas
+
+        # Use mask (only valid areas) and calculate confidence from direction offset only for stable terrain
 
 
         # Export mask to tif files (mask is the same for each time step)
