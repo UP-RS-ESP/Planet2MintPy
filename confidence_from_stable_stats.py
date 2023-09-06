@@ -79,7 +79,6 @@ def get_stable_stats(file_loc, mask_loc):
     
 def confidence_from_stable_stats(aoi, stats_df, iqr_max = 0.5, out_path = "./confidence"): 
     
-    
     for idx, row in stats_df.iterrows():    
     
         ds = gdal.Open(row.file)
@@ -103,5 +102,3 @@ def confidence_from_stable_stats(aoi, stats_df, iqr_max = 0.5, out_path = "./con
 
         cc.write_Geotiff(row.file, con_dx, fn1)
         cc.write_Geotiff(row.file, con_dy, fn2)
-
-        

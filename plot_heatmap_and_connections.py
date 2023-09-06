@@ -81,5 +81,3 @@ def plot_heatmap(df):
                      rotation_mode="anchor")
             
         plt.tight_layout()
-
-    
