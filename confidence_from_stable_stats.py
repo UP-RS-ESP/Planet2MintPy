@@ -26,8 +26,13 @@ def fixed_val_scaler(x, xmin, xmax):
 def get_stable_stats(file_loc, mask_loc):
     
     file_list = glob.glob(file_loc)
+    if len(file_list) == 0: 
+        print("No disparity maps found. Check the provided file location...")
+        return
     mask_list = glob.glob(mask_loc)
-    
+    if len(mask_list) == 0: 
+        print("No landslide masks found. Check the provided file location...")
+        return
     
     ds = gdal.Open(file_list[0])
     dxdy_size = ds.GetRasterBand(1).ReadAsArray().shape
@@ -75,6 +80,7 @@ def get_stable_stats(file_loc, mask_loc):
     df = pd.DataFrame(stats)
     
     df.to_csv("stable_stats.csv", index = False)    
+    return df
     
     
 def confidence_from_stable_stats(aoi, stats_df, iqr_max = 0.5, out_path = "./confidence"): 
@@ -88,8 +94,8 @@ def confidence_from_stable_stats(aoi, stats_df, iqr_max = 0.5, out_path = "./con
         con_dx = np.zeros(dat.shape)
         con_dy = np.zeros(dat.shape)
         
-        con_val_dx = 1 - fixed_val_scaler(row.dx_p75-row.dx_p25, 0, iqr_max) 
-        con_val_dy = 1 - fixed_val_scaler(row.dy_p75-row.dy_p25, 0, iqr_max) 
+        con_val_dx = fixed_val_scaler(row.dx_p75-row.dx_p25, 0, iqr_max) 
+        con_val_dy = fixed_val_scaler(row.dy_p75-row.dy_p25, 0, iqr_max) 
     
         con_dx[~np.isnan(dat)] = con_val_dx
         con_dy[~np.isnan(dat)] = con_val_dy
@@ -97,8 +103,24 @@ def confidence_from_stable_stats(aoi, stats_df, iqr_max = 0.5, out_path = "./con
         if not os.path.isdir(out_path):
             os.makedirs(out_path)
             
-        fn1 = os.path.join(out_path, aoi + "_" + row.date0.replace("-", "") + "_" + row.date1.replace("-", "") + "_confidence_dx.tif")
-        fn2 = os.path.join(out_path, aoi + "_" + row.date0.replace("-", "") + "_" + row.date1.replace("-", "") + "_confidence_dy.tif")
+            
+        try: 
+            fn1 = os.path.join(out_path, aoi + "_" + row.date0.replace("-", "") + "_" + row.date1.replace("-", "") + "_confidence_dx.tif")
+            fn2 = os.path.join(out_path, aoi + "_" + row.date0.replace("-", "") + "_" + row.date1.replace("-", "") + "_confidence_dy.tif")
 
+        except ValueError:
+            fn1 = os.path.join(out_path, aoi + "_" + datetime.strftime(row.date0, "%Y%m%d") + "_" + datetime.strftime(row.date1, "%Y%m%d") + "_confidence_dx.tif")
+            fn2 = os.path.join(out_path, aoi + "_" + datetime.strftime(row.date0, "%Y%m%d") + "_" + datetime.strftime(row.date1, "%Y%m%d") + "_confidence_dy.tif")
+
+            
         cc.write_Geotiff(row.file, con_dx, fn1)
         cc.write_Geotiff(row.file, con_dy, fn2)
+
+        
+file_loc = "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi7/group1/disparity_maps/*_polyfit-F.tif"
+mask_loc = "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi7/masks/*npy.gz"
+
+stats_df = get_stable_stats(file_loc, mask_loc)
+
+#stats_df = pd.read_csv("stable_stats.csv")
+confidence_from_stable_stats("aoi7", stats_df, iqr_max= 0.6, out_path= "./PlanetScope_Data/aoi7/group1/confidence")
