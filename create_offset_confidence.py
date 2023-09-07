@@ -14,6 +14,8 @@ import matplotlib.pyplot as plt
 from skimage import measure
 import correlation_confidence as cc
 
+#TODO: sensor is not needed, remove
+#TODO: 2 or 3 Band offset file? check if 3 band also works
 EXAMPLE = """
 
 example for PlanetScope:
