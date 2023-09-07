@@ -398,6 +398,10 @@ if __name__ == '__main__':
     date_list = [str(i) for i in np.int32(date0_stack).tolist()]
     img_dates = np.array([dt.datetime.strptime(i, date_format) for i in date_list])
 
+    date_list = [str(i) for i in np.int32(date1s).tolist()]
+    img_date_unique = np.array([dt.datetime.strptime(i, date_format) for i in date_list])
+
+
     # residual vs. time span
     fig, ax = plt.subplots(1, 3, figsize=(18, 9), dpi=300)
     ax[0].plot(ddates_day, np.nanmean(residuals_weights, axis=1), 'k+', label='1 / weights')
@@ -409,15 +413,19 @@ if __name__ == '__main__':
     ax[0].legend()
     ax[0].grid()
 
+    #first image date vs. residual
     ax[1].plot(img_dates, np.nanmean(residuals_weights, axis=1), 'k+', label='1 / weights')
     ax[1].plot(img_dates, np.nanmean(residuals_weights2, axis=1), '+', color='darkred', label='sqrt(weights)')
     ax[1].plot(img_dates, np.nanmean(residuals_weights3, axis=1), '+', color='magenta', label='weights')
-    ax[1].plot(img_dates, np.nanmean(residuals_noweights, axis=1), '+', color='navy', label='weights')
+    ax[1].plot(img_dates, np.nanmean(residuals_noweights, axis=1), '+', color='navy', label='no weights')
+    ax12 = ax[1].twinx()
+    ax12.plot(img_date_unique, np.nanmean(ts_weights3, axis=1), '-', color='navy', label='no weights')
     ax[1].set_title('Mean Residual for each image pair (n=%d)'%residuals_weights.shape[0], fontsize=14)
     ax[1].set_xlabel('First Image date')
     ax[1].set_ylabel('residual')
     ax[1].legend()
     ax[1].grid()
+
 
     # Generating Debugging and test plots
     fig, ax = plt.subplots(1, 3, figsize=(18, 9), dpi=300)

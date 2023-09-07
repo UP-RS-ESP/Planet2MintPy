@@ -92,7 +92,7 @@ python /home/bodo/Dropbox/soft/github/Planet2MintPy/create_offset_confidence.py 
    --area_name aoi3 \
    --npy_out_path npy2 \
    --confidence_tif_out_path confidence \
-   --sensor PS 2>&1 | tee create_offset_confidence.py.log
+   --sensor PS 2>&1 | tee create_offset_confidence.py2.log
 ```
 
 ## Prepare Metadata file for MintPy
@@ -144,7 +144,7 @@ An alternative way to mask data is to define the a threshold on the *OffsetStd*.
 We use the weights or confidence values (between 0 and 1) and calculate 1/weight as weights.
 
 ```bash
-cd raid/PS2_aoi3/mintpy/
+cd /raid/Planet_NWArg/PS2_aoi3/mintpy/
 ifgram_inversion.py /raid/Planet_NWArg/PS2_aoi3/mintpy/inputs/geo_offsetStack_aoi3.h5 \
     --skip-reference -i azimuthOffset -w var --md offsetSNR --mt 0.5 -c local --num-worker 20 --mem 16 -o timeseriesAz_var.h5 residualInvAz_var.h5 numInvOffsetAz_var.h5
 ifgram_inversion.py /raid/Planet_NWArg/PS2_aoi3/mintpy/inputs/geo_offsetStack_aoi3.h5 \
