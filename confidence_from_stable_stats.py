@@ -83,9 +83,23 @@ def get_stable_stats(file_loc, mask_loc):
     return df
     
     
-def confidence_from_stable_stats(aoi, stats_df, iqr_max = 0.5, out_path = "./confidence"): 
+def confidence_from_stable_stats(aoi, stats_df, max_iqr = 0.5, out_path = "./"): 
     
-    for idx, row in stats_df.iterrows():    
+    stats_df["dx_iqr"] = stats_df.dx_p75-stats_df.dx_p25
+    stats_df["dy_iqr"] = stats_df.dy_p75-stats_df.dy_p25
+    
+    stats_df = stats_df.loc[stats_df.dx_iqr <= max_iqr]
+    stats_df = stats_df.loc[stats_df.dy_iqr <= max_iqr]
+
+    stats_df["dx_weight"] = 1 / (stats_df.dx_iqr)
+    stats_df["dy_weight"] = 1 / (stats_df.dy_iqr)
+    
+    stats_df.dx_weight = stats_df.dx_weight.map(lambda x: fixed_val_scaler(x, 0, max_iqr))
+    stats_df.dy_weight = stats_df.dy_weight.map(lambda x: fixed_val_scaler(x, 0, max_iqr))
+
+    
+    
+    for idx, row in tqdm(stats_df.iterrows(), total=stats_df.shape[0]):    
     
         ds = gdal.Open(row.file)
         dat = ds.GetRasterBand(1).ReadAsArray()
@@ -93,34 +107,53 @@ def confidence_from_stable_stats(aoi, stats_df, iqr_max = 0.5, out_path = "./con
         
         con_dx = np.zeros(dat.shape)
         con_dy = np.zeros(dat.shape)
-        
-        con_val_dx = fixed_val_scaler(row.dx_p75-row.dx_p25, 0, iqr_max) 
-        con_val_dy = fixed_val_scaler(row.dy_p75-row.dy_p25, 0, iqr_max) 
     
-        con_dx[~np.isnan(dat)] = con_val_dx
-        con_dy[~np.isnan(dat)] = con_val_dy
+        con_dx[~np.isnan(dat)] = row.dx_weight
+        con_dy[~np.isnan(dat)] = row.dy_weight
                 
-        if not os.path.isdir(out_path):
-            os.makedirs(out_path)
+        if not os.path.isdir(os.path.join(out_path, "confidence")):
+            os.makedirs(os.path.join(out_path, "confidence"))
+            
+        if not os.path.isdir(os.path.join(out_path, "disparity_maps")):
+            os.makedirs(os.path.join(out_path, "disparity_maps"))
             
             
         try: 
-            fn1 = os.path.join(out_path, aoi + "_" + row.date0.replace("-", "") + "_" + row.date1.replace("-", "") + "_confidence_dx.tif")
-            fn2 = os.path.join(out_path, aoi + "_" + row.date0.replace("-", "") + "_" + row.date1.replace("-", "") + "_confidence_dy.tif")
+            fn1 = os.path.join(out_path, "confidence", aoi + "_" + row.date0.replace("-", "") + "_" + row.date1.replace("-", "") + "_confidence_dx.tif")
+            fn2 = os.path.join(out_path, "confidence", aoi + "_" + row.date0.replace("-", "") + "_" + row.date1.replace("-", "") + "_confidence_dy.tif")
 
         except ValueError:
-            fn1 = os.path.join(out_path, aoi + "_" + datetime.strftime(row.date0, "%Y%m%d") + "_" + datetime.strftime(row.date1, "%Y%m%d") + "_confidence_dx.tif")
-            fn2 = os.path.join(out_path, aoi + "_" + datetime.strftime(row.date0, "%Y%m%d") + "_" + datetime.strftime(row.date1, "%Y%m%d") + "_confidence_dy.tif")
+            fn1 = os.path.join(out_path, "confidence", aoi + "_" + datetime.strftime(row.date0, "%Y%m%d") + "_" + datetime.strftime(row.date1, "%Y%m%d") + "_confidence_dx.tif")
+            fn2 = os.path.join(out_path, "confidence", aoi + "_" + datetime.strftime(row.date0, "%Y%m%d") + "_" + datetime.strftime(row.date1, "%Y%m%d") + "_confidence_dy.tif")
 
-            
         cc.write_Geotiff(row.file, con_dx, fn1)
         cc.write_Geotiff(row.file, con_dy, fn2)
+        
+        bn = os.path.basename(row.file)
+
+        if os.path.isfile(os.path.join(out_path, "disparity_maps", bn)):
+            os.remove(os.path.join(out_path, "disparity_maps", bn))
+        os.symlink(row.file, os.path.join(out_path, "disparity_maps", bn))
 
         
-file_loc = "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi7/group1/disparity_maps/*_polyfit-F.tif"
-mask_loc = "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi7/masks/*npy.gz"
+file_loc = "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi7/*/disparity_maps/*_polyfit-F.tif"
+mask_loc = "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi7/*/masks/*npy.gz"
 
-stats_df = get_stable_stats(file_loc, mask_loc)
-
-#stats_df = pd.read_csv("stable_stats.csv")
-confidence_from_stable_stats("aoi7", stats_df, iqr_max= 0.6, out_path= "./PlanetScope_Data/aoi7/group1/confidence")
+#stats_df = get_stable_stats(file_loc, mask_loc)
+# link_to = "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi7/group1/selected_03/disparity_maps"
+# for idx, row in stats_df.iterrows():   
+#     iqr_dx = row.dx_p75-row.dx_p25
+#     iqr_dy = row.dy_p75-row.dy_p25
+    
+#     path, cfile = os.path.split(row.file)
+    
+#     if not os.path.isdir(link_to):
+#         os.makedirs(link_to)
+        
+#     if (iqr_dx <= 0.3) and (iqr_dy <= 0.3):
+#         if os.path.isfile(os.path.join(link_to, cfile)):
+#             os.remove(os.path.join(link_to, cfile))
+#         os.symlink(os.path.join(path, cfile), os.path.join(link_to, cfile))
+        
+stats_df = pd.read_csv("stable_stats.csv")
+confidence_from_stable_stats("aoi7", stats_df, max_iqr = 0.5, out_path= "./PlanetScope_Data/aoi7/oneover_weights")
