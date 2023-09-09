@@ -69,6 +69,7 @@ def get_stable_stats(file_loc, mask_loc):
         stats.append({"file": f, 
                       "date0": datetime.strptime(date0, "%Y%m%d"),
                       "date1": datetime.strptime(date1, "%Y%m%d"),
+                      "dt": (datetime.strptime(date1, "%Y%m%d") - datetime.strptime(date0, "%Y%m%d")).days,
                       "dx_std":np.nanstd(dx), 
                       "dx_p25":np.nanpercentile(dx, 25),
                       "dx_p75":np.nanpercentile(dx, 75),
@@ -79,7 +80,7 @@ def get_stable_stats(file_loc, mask_loc):
     
     df = pd.DataFrame(stats)
     
-    df.to_csv("stable_stats.csv", index = False)    
+    df.to_csv("stable_stats_aoi6.csv", index = False)    
     return df
     
     
@@ -90,14 +91,15 @@ def confidence_from_stable_stats(aoi, stats_df, max_iqr = 0.5, out_path = "./"):
     
     stats_df = stats_df.loc[stats_df.dx_iqr <= max_iqr]
     stats_df = stats_df.loc[stats_df.dy_iqr <= max_iqr]
-
-    stats_df["dx_weight"] = 1 / (stats_df.dx_iqr)
-    stats_df["dy_weight"] = 1 / (stats_df.dy_iqr)
-    
-    stats_df.dx_weight = stats_df.dx_weight.map(lambda x: fixed_val_scaler(x, 0, max_iqr))
-    stats_df.dy_weight = stats_df.dy_weight.map(lambda x: fixed_val_scaler(x, 0, max_iqr))
+    stats_df = stats_df.loc[stats_df.dt >= 365]
 
     
+    stats_df["dx_weight"] = stats_df.dx_iqr.map(lambda x: fixed_val_scaler(x, 0, max_iqr))
+    stats_df["dy_weight"] = stats_df.dy_iqr.map(lambda x: fixed_val_scaler(x, 0, max_iqr))
+
+    
+    stats_df["dx_weight"] = np.sqrt(stats_df["dx_weight"])
+    stats_df["dy_weight"] = np.sqrt(stats_df["dy_weight"])
     
     for idx, row in tqdm(stats_df.iterrows(), total=stats_df.shape[0]):    
     
@@ -107,6 +109,8 @@ def confidence_from_stable_stats(aoi, stats_df, max_iqr = 0.5, out_path = "./"):
         
         con_dx = np.zeros(dat.shape)
         con_dy = np.zeros(dat.shape)
+        con_dx[:] = np.nan
+        con_dy[:] = np.nan
     
         con_dx[~np.isnan(dat)] = row.dx_weight
         con_dy[~np.isnan(dat)] = row.dy_weight
@@ -136,10 +140,10 @@ def confidence_from_stable_stats(aoi, stats_df, max_iqr = 0.5, out_path = "./"):
         os.symlink(row.file, os.path.join(out_path, "disparity_maps", bn))
 
         
-file_loc = "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi7/*/disparity_maps/*_polyfit-F.tif"
-mask_loc = "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi7/*/masks/*npy.gz"
+file_loc = "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi6/*/disparity_maps/*_polyfit-F.tif"
+mask_loc = "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi6/masks/*npy.gz"
 
-#stats_df = get_stable_stats(file_loc, mask_loc)
+stats_df = get_stable_stats(file_loc, mask_loc)
 # link_to = "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi7/group1/selected_03/disparity_maps"
 # for idx, row in stats_df.iterrows():   
 #     iqr_dx = row.dx_p75-row.dx_p25
@@ -155,5 +159,5 @@ mask_loc = "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi7/*/masks/*n
 #             os.remove(os.path.join(link_to, cfile))
 #         os.symlink(os.path.join(path, cfile), os.path.join(link_to, cfile))
         
-stats_df = pd.read_csv("stable_stats.csv")
-confidence_from_stable_stats("aoi7", stats_df, max_iqr = 0.5, out_path= "./PlanetScope_Data/aoi7/oneover_weights")
+#stats_df = pd.read_csv("stable_stats.csv")
+#confidence_from_stable_stats("aoi7", stats_df, max_iqr = 0.5, out_path= "./PlanetScope_Data/aoi7/new_weights")

@@ -847,9 +847,9 @@ if __name__ == '__main__':
     inps.PROJECT_NAME = 'AMES'
     inps.processor='cosicorr'
     inps.updateMode='auto'
-    inps.template_file = [inps.template_file] #make sure that this is a list
+    inps.template_file = [inps.template_file] #make sure that this is a list # Ariane: It seems like we dont really need the template file
     # inps.file = ["disparity_maps/*-F_EW.vrt", "disparity_maps/*-F_NS.vrt", "confidence/*_confidence.tif", "confidence/*_confidence.tif"]
-    inps.file = [inps.dx_fn,  inps.dy_fn, inps.dx_confidence_fn, inps.dy_confidence_fn, inps.mask_fn]
+    inps.file = [inps.dy_fn,  inps.dx_fn, inps.dy_confidence_fn, inps.dx_confidence_fn, inps.mask_fn]
     inps.file = ut.get_file_list(inps.file, abspath=True)
     inps.compression = 'lzf'
     prep_AMES(inps, pixel_size=inps.pixel_size)
