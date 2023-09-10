@@ -88,66 +88,6 @@ def create_design_matrix(num_ifgram, num_date, tbase, date1s, date_list, refDate
     return A, B, refDate
 
 
-def linalg_noweights(A, y, tbase_diff, num_pixel, rcond=1e-5):
-    #numpy-based least square inversion without weights
-    num_date = A.shape[1] + 1
-    ts = np.empty((num_date, nre), dtype=np.float32)
-    ts.fill(np.nan)
-    residuals = np.zeros((A.shape[0], nre), dtype=np.float32)
-    ranks = np.empty(nre, dtype=np.float32)
-    ranks.fill(np.nan)
-
-    # y = y.reshape(A.shape[0], -1)
-    # X, residuals, ranks, _ = np.linalg.lstsq(A, y, rcond=rcond)
-    # ts_diff = X * np.tile(tbase_diff, (1, num_pixel))
-    # ts[1:, :] = np.cumsum(ts_diff, axis=1)
-    print('Run linear inversion on each pixel without weights')
-    for i in tqdm.tqdm(range(nre)):
-        y2 = y[:,i]
-        y2 = np.copy(np.reshape(y2, (A.shape[0], -1)))
-        X, residual, ranks[i], _ = np.linalg.lstsq(A, y2,
-                                                rcond=rcond)
-        if residual.size > 0:
-            residuals[:,i] = residual
-        else:
-            residuals[:,i] = np.squeeze(np.squeeze(A).dot(X))
-        ts[0,:] = np.zeros(nre, dtype=np.float32)
-        ts_diff = X[:,0] * tbase_diff[:,0]
-        ts[1:, i] = np.cumsum(ts_diff)
-
-    return ts, residuals, ranks
-
-
-def linalg_rweights(A, y, weights, tbase_diff, num_pixel, rcond=1e-5):
-    #reverse or reciprocal weights using numpy
-    #W = 1. / W
-    num_date = A.shape[1] + 1
-    ts = np.empty((num_date, nre), dtype=np.float32)
-    ts.fill(np.nan)
-    residuals = np.empty((A.shape[0], nre), dtype=np.float32)
-    residuals.fill(np.nan)
-    ranks = np.empty(nre, dtype=np.float32)
-    ranks.fill(np.nan)
-
-    #will do pixel-by-pixel inversion, because some pixels may not have data
-    # print('Run linear inversion on each pixel with 1 / weights')
-    for i in tqdm.tqdm(range(nre)):
-        W = weights[:,i]
-        W = 1. / W  # use inverse of weight
-        W = np.diag(W)
-        y2 = y[:,i]
-        Aw = np.dot(W, A)
-        Bw = np.dot(y2, W)
-        X, residual, ranks[i], _ = np.linalg.lstsq(Aw, Bw, rcond=rcond)
-        if residual.size > 0:
-            residuals[:,i] = residual
-        else:
-            residuals[:,i] = np.squeeze(A.dot(X))
-        ts[0,:] = np.zeros(nre, dtype=np.float32)
-        ts_diff = X * tbase_diff[:,0]
-        ts[1:, i] = np.cumsum(ts_diff)
-    return ts, residuals, ranks
-
 @njit(parallel=True)
 def linalg_rweights_numba(A, y, weights, tbase_diff, num_pixel, rcond=1e-5):
     #numba-based inversion using inverse IQR
@@ -284,205 +224,6 @@ def linalg_tweights_numba(A, y, weights, deltay_stack2, deltay_stack_scale, tbas
     return ts, residuals, ranks
 
 
-@njit(parallel=True)
-def linalg_tweights_numba2(A, y, weights, deltay_stack, deltay_stack_scale, residuals, tbase_diff, num_pixel, rcond=1e-5):
-    # Test case for using reciprocal IQR scaled with length of time series and scaled with inverse of residual
-    num_date = A.shape[1] + 1
-    ts = np.empty((num_date, nre), dtype=np.float32)
-    ts.fill(np.nan)
-    residuals = np.empty((A.shape[0], nre), dtype=np.float32)
-    residuals.fill(np.nan)
-    ranks = np.empty(nre, dtype=np.float32)
-    ranks.fill(np.nan)
-
-    #will do pixel-by-pixel inversion, because some pixels may not have data
-    # print('Run linear inversion on each pixel with 1 / weights')
-    for i in prange(nre):
-        W = weights[:,i]
-        if np.all(np.isnan(residuals[:,i])):
-            W = (1/W) * deltay_stack ** deltay_stack_scale
-        else:
-            W = (1/W) * deltay_stack ** deltay_stack_scale * (1/residuals[:,i])
-        W = np.diag(W).astype(np.float64)
-        y2 = y[:,i].astype(np.float64)
-        Aw = np.dot(W, A.astype(np.float64))
-        Bw = np.dot(y2, W)
-        X, residual, ranks[i], _ = np.linalg.lstsq(Aw, Bw, rcond=rcond)
-        if residual.size > 0:
-            residuals[:,i] = residual
-        else:
-            residuals[:,i] = A.astype(np.float64).dot(X)
-        ts_diff = X * tbase_diff[:,0]
-        ts[0,:] = np.zeros(nre, dtype=np.float32)
-        ts[1:, i] = np.cumsum(ts_diff)
-    return ts, residuals, ranks
-
-
-def linalg_rweights_GPU(A, y, weights, tbase_diff, num_pixel, rcond=1e-5):
-    #not faster, unless there are more than 1e5 points
-    # makes only sense to run for very large arrays - we don't use this yet
-    num_date = A.shape[1] + 1
-    ts = cp.empty((num_date, nre), dtype=np.float32)
-    ts.fill(np.nan)
-    residuals = cp.zeros((A.shape[0], nre), dtype=np.float32)
-    ranks = cp.empty(nre, dtype=np.float32)
-    ranks.fill(np.nan)
-    A_gpu = cp.asarray(A)
-    y_gpu = cp.asarray(y)
-    weights_gpu = cp.asarray(weights)
-
-    #will do pixel-by-pixel inversion, because some pixels may not have data
-    # print('Run linear inversion for each pixel with 1 / IQR (CUDA)')
-    for i in tqdm.tqdm(range(nre)):
-        weight_sqrt = weights_gpu[:,i]
-        weight_sqrt = 1. / weight_sqrt  # use inverse of weight
-        y2 = y_gpu[:,i]
-        y2 = np.expand_dims(y2, 1)
-        weight_sqrt = np.expand_dims(weight_sqrt, 1)
-        X, residual, ranks[i], _ = cp.linalg.lstsq(np.multiply(A_gpu, weight_sqrt), np.multiply(y2, weight_sqrt),
-                                                rcond=rcond)
-        if residual.size > 0:
-            residuals[:,i] = residual
-        else:
-            residuals[:,i] = np.squeeze(np.squeeze(A_gpu).dot(X))
-        # ts_diff = np.squeeze(X * np.tile(tbase_diff, (1, num_pixel)))
-        ts_diff = cp.asnumpy(X[:,0]) * tbase_diff[:,0]
-        ts[1:, i] = np.cumsum(ts_diff)
-    res = cp.asnumpy(residuals)
-    rank = cp.asnumpy(ranks)
-    del X, y2, weight_sqrt, weights_gpu, y_gpu, A_gpu, residuals, ranks
-    cp._default_memory_pool.free_all_blocks()
-    return ts, res, rank
-
-
-def linalg_sqrtweights(A, y, weights, tbase_diff, num_pixel, rcond=1e-5):
-    #using square root of reciprocal weight
-    num_date = A.shape[1] + 1
-    ts = np.empty((num_date, nre), dtype=np.float32)
-    ts.fill(np.nan)
-    residuals = np.empty((A.shape[0], nre), dtype=np.float32)
-    residuals.fill(np.nan)
-    ranks = np.empty(nre, dtype=np.float32)
-    ranks.fill(np.nan)
-
-    #will do pixel-by-pixel inversion, because some pixels may not have data
-    # print('Run linear inversion on each pixel with rescaling: sqrt(1/weights)')
-    for i in tqdm.tqdm(range(nre)):
-        W = weights[:,i]
-        W = np.sqrt(1/W)  # use squre root of weight, to faciliate WLS, same as for phase.
-        W = np.diag(W)
-        y2 = y[:,i]
-        Aw = np.dot(W, A)
-        Bw = np.dot(y2, W)
-        X, residual, ranks[i], _ = np.linalg.lstsq(Aw, Bw, rcond=rcond)
-
-        if residual.size > 0:
-            residuals[:,i] = residual
-        else:
-            residuals[:,i] = np.squeeze(np.squeeze(A).dot(X))
-        ts[0,:] = np.zeros(nre, dtype=np.float32)
-        ts_diff = X * tbase_diff[:,0]
-        ts[1:, i] = np.cumsum(ts_diff)
-    return ts, residuals, ranks
-
-
-def linalg_weights_norescaling(A, y, weights, tbase_diff, num_pixel, rcond=1e-5):
-    #uses weights (IQR) without scaling
-    num_date = A.shape[1] + 1
-    ts = np.empty((num_date, nre), dtype=np.float32)
-    ts.fill(np.nan)
-    residuals = np.empty((A.shape[0], nre), dtype=np.float32)
-    residuals.fill(np.nan)
-    ranks = np.empty(nre, dtype=np.float32)
-    ranks.fill(np.nan)
-
-    #will do pixel-by-pixel inversion, because some pixels may not have data
-    # print('Run linear inversion on each pixel with weights (no rescaling)')
-    for i in tqdm.tqdm(range(nre)):
-        W = weights[:,i]
-        W = np.diag(W)
-        y2 = y[:,i]
-        Aw = np.dot(W, A)
-        Bw = np.dot(y2, W)
-        X, residual, ranks[i], _ = np.linalg.lstsq(Aw, Bw, rcond=rcond)
-
-        if residual.size > 0:
-            residuals[:,i] = residual
-        else:
-            residuals[:,i] = np.squeeze(np.squeeze(A).dot(X))
-
-        ts[0,:] = np.zeros(nre, dtype=np.float32)
-        ts_diff = X * tbase_diff[:,0]
-        ts[1:, i] = np.cumsum(ts_diff)
-    return ts, residuals, ranks
-
-
-def linalg_tweights(A, y, weights, deltay_stack, deltay_stack_scale, tbase_diff, num_pixel, rcond=1e-5):
-    # reciprocal weights scaled by time step/duration
-    num_date = A.shape[1] + 1
-    ts = np.empty((num_date, nre), dtype=np.float32)
-    ts.fill(np.nan)
-    residuals = np.empty((A.shape[0], nre), dtype=np.float32)
-    residuals.fill(np.nan)
-    ranks = np.empty(nre, dtype=np.float32)
-    ranks.fill(np.nan)
-
-    #will do pixel-by-pixel inversion, because some pixels may not have data
-    # print('Run linear inversion on each pixel scaled with time difference 1/(weight_sqrt)*deltay_stack[i]**deltay_stack_scale')
-    for i in tqdm.tqdm(range(nre)):
-        W = weights[:,i]
-        # weight_sqrt[np.isnan(weight_sqrt)] = 100.
-        # weight_sqrt[weight_sqrt < 0.005] = 0.005
-        W = (1/W) * deltay_stack**deltay_stack_scale
-        W = np.diag(W)
-        y2 = y[:,i]
-        Aw = np.dot(W, A)
-        Bw = np.dot(y2, W)
-        X, residual, ranks[i], _ = np.linalg.lstsq(Aw, Bw, rcond=rcond)
-
-        if residual.size > 0:
-            residuals[:,i] = residual
-        else:
-            residuals[:,i] = np.squeeze(np.squeeze(A).dot(X))
-        ts[0,:] = np.zeros(nre, dtype=np.float32)
-        ts_diff = X * tbase_diff[:,0]
-        ts[1:, i] = np.cumsum(ts_diff)
-    return ts, residuals, ranks
-
-
-def linalg_tweights2(A, y, weights, deltay_stack, deltay_stack_scale, residuals, tbase_diff, num_pixel, rcond=1e-5):
-    # Test case with reciprocal weights scaled by timestep/duration and inverse of residuals
-    num_date = A.shape[1] + 1
-    ts = np.empty((num_date, nre), dtype=np.float32)
-    ts.fill(np.nan)
-    residuals = np.empty((A.shape[0], nre), dtype=np.float32)
-    residuals.fill(np.nan)
-    ranks = np.empty(nre, dtype=np.float32)
-    ranks.fill(np.nan)
-
-    #will do pixel-by-pixel inversion, because some pixels may not have data
-    # print('Run linear inversion on each pixel scaled with time difference 1/(weight_sqrt)*deltay_stack[i]**deltay_stack_scale')
-    for i in tqdm.tqdm(range(nre)):
-        W = weights[:,i]
-        if np.all(np.isnan(residuals[:,i])):
-            W = (1/W) * deltay_stack **deltay_stack_scale
-        else:
-            W = (1/W) * deltay_stack **deltay_stack_scale * (1/residuals[:,i])
-        W = np.diag(W)
-        y2 = y[:,i]
-        Aw = np.dot(W, A)
-        Bw = np.dot(y2, W)
-        X, residual, ranks[i], _ = np.linalg.lstsq(Aw, Bw, rcond=rcond)
-
-        if residual.size > 0:
-            residuals[:,i] = residual
-        else:
-            residuals[:,i] = np.squeeze(np.squeeze(A).dot(X))
-        ts[0,:] = np.zeros(nre, dtype=np.float32)
-        ts_diff = X * tbase_diff[:,0]
-        ts[1:, i] = np.cumsum(ts_diff)
-    return ts, residuals, ranks
-
 def cmdLineParser():
     from argparse import RawTextHelpFormatter
     parser = argparse.ArgumentParser(description=DESCRIPTION, formatter_class=RawTextHelpFormatter)
@@ -521,13 +262,12 @@ if __name__ == '__main__':
     ts_dangle_npy_fname = area_name + "_ts_dangle.npy.gz"
     dx_stack_iqr_fn = area_name + '_dx_iqr.npy.gz'
     dy_stack_iqr_fn = area_name + '_dy_iqr.npy.gz'
+    dx_ts_tweights_numba_fn = area_name + '%s_dx_ts_tweights.npy.gz'%args.area_name
+    dy_ts_tweights_numba_fn = area_name + '%s_dy_ts_tweights.npy.gz'%args.area_name
     dx_ts_rweights_numba_fn = area_name + '%s_dx_ts_rweights.npy.gz'%args.area_name
     dy_ts_rweights_numba_fn = area_name + '%s_dy_ts_rweights.npy.gz'%args.area_name
     dx_ts_rweights2_numba_fn = area_name + '%s_dx_ts_rweights2.npy.gz'%args.area_name
     dy_ts_rweights2_numba_fn = area_name + '%s_dy_ts_rweights2.npy.gz'%args.area_name
-    #ts should be in same order as other data
-    #ts_confidence_npy_fname = "./confidence_stable_stats/" area_name + "_ts_dangle.npy.gz"
-    #aoi3_20190807_20200517_confidence_dy.tif
 
     #Load masked file - either as Geotiff or as npy
     print('Load mask data')
@@ -577,23 +317,6 @@ if __name__ == '__main__':
     dy_iqr = np.load(f)
     f = None
 
-    # DEBUG
-    # # plot median confidence values - only for image data
-    # conf_median = cc.nanmedian_numba(conf)
-    # conf_std = cc.nanstd_numba(conf)
-    # fig, ax = plt.subplots(1, 2, figsize=(18, 9), dpi=300)
-    # im0 = ax[0].imshow(conf_median, vmin=np.nanpercentile(conf_median,2), vmax=np.nanpercentile(conf_median,98), cmap='viridis')
-    # ax[0].set_title('Median confidence values (n=%d timesteps)'%conf.shape[0], fontsize=14)
-    # cb0 = fig.colorbar(im0, ax=ax[0], location='bottom', pad=0.1)
-    # cb0.set_label('Median confidence [px]')
-    #
-    # im1 = ax[1].imshow(conf_std, vmin=np.nanpercentile(conf_std,2), vmax=np.nanpercentile(conf_std,98), cmap='magma')
-    # ax[1].set_title('Std. Dev. confidence values (n=%d timesteps)'%conf.shape[0], fontsize=14)
-    # cb1 = fig.colorbar(im1, ax=ax[1], location='bottom', pad=0.1)
-    # cb1.set_label('std. dev. confidence [px]')
-    # fig.tight_layout()
-    # fig.savefig('ConfidenceValues_median_stddev.png', dpi=300)
-
     # Extract values only for masked areas
     print('Extract relevant values and remove full array from memory')
     idxxy = np.where(mask.ravel() == 1)[0]
@@ -626,97 +349,11 @@ if __name__ == '__main__':
     date_list = [str(i) for i in np.int32(date0_stack).tolist()]
     img_dates = np.array([dt.datetime.strptime(i, date_format) for i in date_list])
     img_date_unique = np.unique(img_dates)
-    # date_list = [str(i) for i in np.int32(date1s).tolist()]
-    # img_date_unique = np.array([dt.datetime.strptime(i, date_format) for i in date_list])
-
-    #select only images from same months
-    months0 = np.empty(len(dates0))
-    months0.fill(np.nan)
-    for i in range(len(dates0)):
-        months0[i] = dates0[i].month
-    dates0_MJJASO_idx, = np.where((months0 >=5) & (months0 <=10))
-    dates0_NDJFMA_idx, = np.where((months0 <=4) | (months0 >=11))
-
-    months1 = np.empty(len(dates1))
-    months1.fill(np.nan)
-    for i in range(len(dates1)):
-        months1[i] = dates1[i].month
-    dates1_MJJASO_idx, = np.where((months1 >=5) & (months1 <=10))
-    dates1_NDJFMA_idx, = np.where((months1 <=4) | (months1 >=11))
-
-    dates_MJJASO_idx = np.intersect1d(dates0_MJJASO_idx, dates1_MJJASO_idx)
-    dates_NDJFMA_idx = np.intersect1d(dates0_NDJFMA_idx, dates1_NDJFMA_idx)
-
-    # Run inversion for MJJASO season
-    num_date, tbase, date1s, date_list, date12_list, unique_date = prepare_design_matrix_input(date0_stack[dates_MJJASO_idx],
-        date1_stack[dates_MJJASO_idx], date_format = "%Y%m%d")
-    A, B, refDate = create_design_matrix(len(dates_MJJASO_idx), num_date, tbase, date1s, date_list, refDate=None)
-    tbase_diff_MJJASO = np.diff(tbase).reshape(-1, 1)
-    print('MJJASO inversion')
-    print('\t dx')
-    dx_ts_tweights_numba_MJJASO, dx_residuals_tweights_numba_MJJASO, dx_ranks_weights_numba_MJJASO = linalg_tweights_numba(A, dx_stack_masked[dates_MJJASO_idx,:], dx_IQR_masked[dates_MJJASO_idx,:], deltay_stack[dates_MJJASO_idx], deltay_stack_scale, tbase_diff_MJJASO, nre, rcond=1e-5)
-    print('\t dy')
-    dy_ts_tweights_numba_MJJASO, dy_residuals_tweights_numba_MJJASO, dy_ranks_weights_numba_MJJASO = linalg_tweights_numba(A, dy_stack_masked[dates_MJJASO_idx,:], dy_IQR_masked[dates_MJJASO_idx,:], deltay_stack[dates_MJJASO_idx], deltay_stack_scale, tbase_diff_MJJASO, nre, rcond=1e-5)
-    tbase_diff2_MJJASO = np.insert(tbase_diff_MJJASO, 0, 0)
-
-    # Run inversion for NDJFMA season
-    num_date, tbase, date1s, date_list, date12_list, unique_date = prepare_design_matrix_input(date0_stack[dates_NDJFMA_idx],
-        date1_stack[dates_MJJASO_idx], date_format = "%Y%m%d")
-    A, B, refDate = create_design_matrix(len(dates_NDJFMA_idx), num_date, tbase, date1s, date_list, refDate=None)
-    tbase_diff_NDJFMA = np.diff(tbase).reshape(-1, 1)
-    print('NDJFMA inversion')
-    print('\t dx')
-    dx_ts_tweights_numba_NDJFMA, dx_residuals_tweights_numba_NDJFMA, dx_ranks_weights_numba_NDJFMA = linalg_tweights_numba(A, dx_stack_masked[dates_NDJFMA_idx,:], dx_IQR_masked[dates_NDJFMA_idx,:], deltay_stack[dates_NDJFMA_idx], deltay_stack_scale, tbase_diff_NDJFMA, nre, rcond=1e-5)
-    print('\t dy')
-    dy_ts_tweights_numba_NDJFMA, dy_residuals_tweights_numba_NDJFMA, dy_ranks_weights_numba_NDJFMA = linalg_tweights_numba(A, dy_stack_masked[dates_NDJFMA_idx,:], dy_IQR_masked[dates_NDJFMA_idx,:], deltay_stack[dates_NDJFMA_idx], deltay_stack_scale, tbase_diff_NDJFMA, nre, rcond=1e-5)
-    tbase_diff2_NDJFMA = np.insert(tbase_diff_NDJFMA, 0, 0)
-
-    # Run inversion for all pairs
-    num_date, tbase, date1s, date_list, date12_list, unique_date = prepare_design_matrix_input(date0_stack,
-        date1_stack, date_format = "%Y%m%d")
-    A, B, refDate = create_design_matrix(len(date0_stack), num_date, tbase, date1s, date_list, refDate=None)
-    tbase_diff = np.diff(tbase).reshape(-1, 1)
-    print('\t dx')
-    dx_ts_tweights_numba, dx_residuals_tweights_numba, dx_ranks_weights_numba = linalg_tweights_numba(A, dx_stack_masked, dx_IQR_masked, deltay_stack, deltay_stack_scale, tbase_diff, nre, rcond=1e-5)
-    print('\t dy')
-    dy_ts_tweights_numba, dy_residuals_tweights_numba, dy_ranks_weights_numba = linalg_tweights_numba(A, dy_stack_masked, dy_IQR_masked, deltay_stack, deltay_stack_scale, tbase_diff, nre, rcond=1e-5)
-    tbase_diff2 = np.insert(tbase_diff, 0, 0)
-
-    # dx and dy time series
-    fig, ax = plt.subplots(1, 2, figsize=(18, 9), dpi=300)
-    # ax[0].plot(np.cumsum(tbase_diff2), np.nanmean(ts_rweights, axis=1), 'k-', label='(1/IQR)')
-    ax[0].plot(np.cumsum(tbase_diff2_NDJFMA), np.nanmean(dx_ts_tweights_numba_NDJFMA, axis=1), '-', color='darkred', label='NDJFMA (n=%d dates)'%dx_ts_tweights_numba_NDJFMA.shape[0])
-    ax[0].plot(np.cumsum(tbase_diff2_MJJASO), np.nanmean(dx_ts_tweights_numba_MJJASO, axis=1), '-', color='navy', label='MJJASO (n=%d dates)'%dx_ts_tweights_numba_MJJASO.shape[0])
-    ax[0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_tweights_numba, axis=1), '-', color='gray', label='all (n=%d dates)'%dx_ts_tweights_numba.shape[0])
-    ax[0].set_title('Mean dx offset (n=%d pixels)'%nre, fontsize=14)
-    ax[0].set_xlabel('Time [y]')
-    ax[0].set_ylabel('Cumulative dx offset [pix]')
-    ax[0].legend()
-    ax[0].grid()
-    ax[1].plot(np.cumsum(tbase_diff2_NDJFMA), np.nanmean(dy_ts_tweights_numba_NDJFMA, axis=1), '-', color='darkred', label='NDJFMA')
-    ax[1].plot(np.cumsum(tbase_diff2_MJJASO), np.nanmean(dy_ts_tweights_numba_MJJASO, axis=1), '-', color='navy', label='MJJASO')
-    ax[1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_tweights_numba, axis=1), '-', color='gray', label='all')
-    ax[1].set_title('Mean dy offset (n=%d pixels)'%nre, fontsize=14)
-    ax[1].set_xlabel('Time [y]')
-    ax[1].set_ylabel('Cumulative dy offset [pix]')
-    ax[1].legend()
-    ax[1].grid()
-    fig.tight_layout()
-    fig.savefig(os.path.join(args.png_out_path, '%s_dx_dy_seasonal_timeseries_scaled_with_different_weights.png'%args.area_name), dpi=300)
-
 
     # prepare and create design_matrix
     num_date, tbase, date1s, date_list, date12_list, unique_date = prepare_design_matrix_input(date0_stack, date1_stack, date_format = "%Y%m%d")
     A, B, refDate = create_design_matrix(num_ifgram, num_date, tbase, date1s, date_list, refDate=None)
     tbase_diff = np.diff(tbase).reshape(-1, 1)
-    # print('refDate: ',refDate)
-    # print('Shape Design Matrix: ', A_nrn1.shape)
-    # print()
-    # print('Date list (without reference/first date:')
-    # print(date_list[1::])
-    # print()
-    # print('Design matrix for displacement data: ')
-    # plt.imshow(A), plt.colorbar(), plt.title('Design Matrix A'), plt.show()
 
     # Plot different weights - only for dx
     fig, ax = plt.subplots(1, 2, figsize=(18, 9), dpi=300)
@@ -757,25 +394,6 @@ if __name__ == '__main__':
     print('\t dy')
     dy_ts_tweights_numba, dy_residuals_tweights_numba, dy_ranks_weights_numba = linalg_tweights_numba(A, dy_stack_masked, dy_IQR_masked, deltay_stack, deltay_stack_scale, tbase_diff, nre, rcond=1e-5)
 
-    # Plot ts_rweights and residuals weights
-    # fig, ax = plt.subplots(1, 2, figsize=(18, 9), dpi=300)
-    # diff=np.empty(ts_rweights.shape[1])
-    # diff.fill(np.nan)
-    # for i in range(ts_rweights.shape[1]):
-    #     diff[i] = np.nansum( (ts_rweights[:,i] - ts_rweights_numba[:,i])**2 )
-    # i, = np.where(np.nanmin(diff)==diff)
-    # i = i[0]
-    # ax[0].plot(np.cumsum(tbase_diff2), np.squeeze(ts_rweights[:,i]), 'x', ms=5, color='k', label='MIN rweights i=%d'%i)
-    # ax[0].plot(np.cumsum(tbase_diff2), np.squeeze(ts_rweights_numba[:,i]), 'o', ms=3, color='k', label='MIN rweights numba i=%d'%i)
-    # i, = np.where(np.nanmax(diff)==diff)
-    # ax[0].plot(np.cumsum(tbase_diff2), np.squeeze(ts_rweights[:,i]), 'x', ms=5, color='darkred', label='MAX rweights i=%d'%i)
-    # ax[0].plot(np.cumsum(tbase_diff2), np.squeeze(ts_rweights_numba[:,i]), 'o', ms=3, color='darkred', label='MAX rweights numba i=%d'%i)
-    # ax[0].set_title('TS with rweights (n=%d timesteps)'%dx_iqr.shape[0], fontsize=14)
-    # ax[0].set_xlabel('time [y]')
-    # ax[0].set_ylabel('ts rweights')
-    # ax[0].grid()
-    # ax[0].legend()
-
     # Plot residuals and time series
     # residual_range = np.nanmax(dx_residuals_tweights, axis=1) - np.nanmin(dx_residuals_tweights, axis=1)
     dx_residual_range_numba = np.nanmax(dx_residuals_tweights_numba, axis=1) - np.nanmin(dx_residuals_tweights_numba, axis=1)
@@ -796,9 +414,6 @@ if __name__ == '__main__':
     ax[0].set_ylim([0, 6])
     ax[1].plot(deltay_stack, np.nanmean(dx_residuals_tweights_numba, axis=1), 'o', ms=3, color='navy', label='dx residuals numba')
     ax[1].plot(deltay_stack, np.nanmean(dy_residuals_tweights_numba, axis=1), 'x', ms=3, color='darkred', label='dy residuals numba')
-    # ax[1].plot(deltay_stack, np.nanmean(dx_residuals_tweights, axis=1), 'x', ms=5, color='k', label='residuals')
-    # ax[1].plot(deltay_stack, np.nanmean(dx_residuals_tweights2, axis=1), 'o', ms=5, color='darkred', label='residuals2')
-    # ax[1].plot(deltay_stack, residual_range, 's', ms=3, color='darkred', label='residual range')
     ax[1].set_title('Timestep and residuals (n=%d timesteps)'%deltay_stack.shape[0], fontsize=14)
     ax[1].set_ylabel('residuals')
     ax[1].set_xlabel('$\Delta$ time [y]')
@@ -806,7 +421,6 @@ if __name__ == '__main__':
     ax[1].legend()
     ax[2].plot(dx_iqr, dx_residual_range_numba, 'o', ms=3, color='navy', label='residuals numba')
     ax[2].plot(dy_iqr, dy_residual_range_numba, 'x', ms=3, color='darkred', label='residuals numba')
-    # ax[2].plot(dx_iqr, residual_range, 'x', ms=3, color='k', label='residuals')
     ax[2].set_title('IQR and residuals (n=%d timesteps)'%dx_iqr.shape[0], fontsize=14)
     ax[2].set_ylabel('residual range ')
     ax[2].set_xlabel('IQR')
@@ -890,7 +504,6 @@ if __name__ == '__main__':
     ax[0].set_ylabel('dx residual')
     ax[0].legend()
     ax[0].grid()
-
     #first image date vs. residual
     ax[1].plot(img_dates, np.nanmean(dx_residuals_rweights_numba, axis=1), 'k+', label='numba (1/IQR)')
     ax[1].plot(img_dates, np.nanmean(dx_residuals_tweights_numba, axis=1), 'o', ms=3, color='darkred', label='numba (1/IQR)*deltay_stack**deltay_stack_scale')
@@ -983,6 +596,19 @@ if __name__ == '__main__':
     fig.savefig(os.path.join(args.png_out_path, '%s_dx_dy_timeseries_scaled_with_different_weights.png'%args.area_name), dpi=300)
 
     # Export inverted ts to npy files
+    if os.path.exists(dx_ts_tweights_numba_fn) is False:
+        f = gzip.GzipFile(dx_ts_tweights_numba_fn, "w")
+        np.save(file=f, arr=dx_ts_tweights_numba)
+        f.close()
+        f = None
+
+    if os.path.exists(dy_ts_tweights_numba_fn) is False:
+        f = gzip.GzipFile(dy_ts_tweights_numba_fn, "w")
+        np.save(file=f, arr=dy_ts_tweights_numba)
+        f.close()
+        f = None
+
+
     if os.path.exists(dx_ts_rweights_numba_fn) is False:
         f = gzip.GzipFile(dx_ts_rweights_numba_fn, "w")
         np.save(file=f, arr=dx_ts_rweights_numba)
@@ -992,5 +618,17 @@ if __name__ == '__main__':
     if os.path.exists(dy_ts_rweights_numba_fn) is False:
         f = gzip.GzipFile(dy_ts_rweights_numba_fn, "w")
         np.save(file=f, arr=dy_ts_rweights_numba)
+        f.close()
+        f = None
+
+    if os.path.exists(dx_ts_rweights2_numba_fn) is False:
+        f = gzip.GzipFile(dx_ts_rweights2_numba_fn, "w")
+        np.save(file=f, arr=dx_ts_rweights2_numba)
+        f.close()
+        f = None
+
+    if os.path.exists(dy_ts_rweights2_numba_fn) is False:
+        f = gzip.GzipFile(dy_ts_rweights2_numba_fn, "w")
+        np.save(file=f, arr=dy_ts_rweights2_numba)
         f.close()
         f = None
