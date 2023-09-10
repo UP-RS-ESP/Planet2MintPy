@@ -26,18 +26,54 @@ def plot_network(df, color_by = "dx_iqr", vmin = 0, vmax = 1):
     merge = df.merge(conns, left_on='date0', right_on='date')
     merge = merge.merge(conns, left_on='date1', right_on='date')
     
+    agg = pd.DataFrame({"date": pd.concat([df.date0, df.date1]), "dx_iqr": pd.concat([df.dx_iqr, df.dx_iqr]), "dy_iqr": pd.concat([df.dy_iqr, df.dy_iqr])})
+    agg = agg.groupby("date").aggregate("median").reset_index()
     
-    fig, ax = plt.subplots()
+
+    merge = merge.merge(agg, left_on = "date0", right_on = "date", suffixes=("", "_agg_ref"))
+    merge = merge.merge(agg, left_on = "date1", right_on = "date", suffixes=("", "_agg_sec"))
+
+    fig, ax = plt.subplots(1,2, figsize = (12,5))
     cmap = plt.get_cmap('viridis')
     norm = Normalize(vmin = vmin, vmax = vmax)
-    for d0, d1, c0, c1, s in zip(merge.date0, merge.date1, merge.count_x, merge.count_y, merge[color_by]):
+    for d0, d1, c0, c1, s in zip(merge.date0, merge.date1, merge.dx_iqr_agg_ref, merge.dx_iqr_agg_sec, merge["dx_iqr"]):
         x_values = [d0, d1]
         y_values = [c0, c1]
         color = cmap(norm(s))
-        ax.plot(x_values, y_values, color=color)
-    ax.scatter(conns.date, conns["count"])
+        ax[0].plot(x_values, y_values, color=color)
+    ax[0].scatter(agg.date, agg.dx_iqr)
+    ax[0].set_xlabel("Date")
+    ax[0].set_ylabel("median dx IQR ")
+    for d0, d1, c0, c1, s in zip(merge.date0, merge.date1, merge.dy_iqr_agg_ref, merge.dy_iqr_agg_sec, merge["dy_iqr"]):
+        x_values = [d0, d1]
+        y_values = [c0, c1]
+        color = cmap(norm(s))
+        ax[1].plot(x_values, y_values, color=color)
+    ax[1].scatter(agg.date, agg.dy_iqr)
+    ax[1].set_xlabel("Date")
+    ax[1].set_ylabel("median dy IQR ")
+    
+    ax[0].set_ylim(0,1.1)       
+    ax[1].set_ylim(0,1.1)
+    ax[0].grid()
+    ax[1].grid()
     sm = ScalarMappable(cmap=cmap, norm=norm)
-    plt.colorbar(sm, label = color_by, ax = ax) 
+    plt.colorbar(sm, label = "dx_iqr", ax = ax[0]) 
+    plt.colorbar(sm, label = "dy_iqr", ax = ax[1]) 
+        
+    plt.tight_layout()
+    
+    # fig, ax = plt.subplots()
+    # cmap = plt.get_cmap('viridis')
+    # norm = Normalize(vmin = vmin, vmax = vmax)
+    # for d0, d1, c0, c1, s in zip(merge.date0, merge.date1, merge.count_x, merge.count_y, merge[color_by]):
+    #     x_values = [d0, d1]
+    #     y_values = [c0, c1]
+    #     color = cmap(norm(s))
+    #     ax.plot(x_values, y_values, color=color)
+    # ax.scatter(conns.date, conns["count"])
+    # sm = ScalarMappable(cmap=cmap, norm=norm)
+    # plt.colorbar(sm, label = color_by, ax = ax) 
     
         
 def plot_heatmap(df):   
@@ -81,3 +117,4 @@ def plot_heatmap(df):
                      rotation_mode="anchor")
             
         plt.tight_layout()
+

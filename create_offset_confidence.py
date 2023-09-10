@@ -410,7 +410,7 @@ if __name__ == '__main__':
 
 
         # ### combine the metrics into one score
-        combined_score = 1 / ts_dangle
+        combined_score = ts_dangle
         # combined_score = ts_dangle*dx_mZscore*dy_mZscore
         if os.path.exists(combined_score_npy_fname) is False:
             f = gzip.GzipFile(combined_score_npy_fname, "w")
