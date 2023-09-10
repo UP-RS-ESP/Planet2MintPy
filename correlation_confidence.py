@@ -150,6 +150,36 @@ def nanmedian_numba(array_data):
 
 
 @njit(parallel=True)
+def nanpercentile_numba(array_data, stable_mask, p):
+    # nanpercentile_numba - calculates percentile p in parallel mode using numba for masked area == 1
+    # expects 3 dimensions:
+    #  - dimension 0 contains time steps
+    #  - dimension 1 and 2 contain image data
+    nanpercentile = np.empty((array_data.shape[0]), dtype=np.float32)
+    nanpercentile.fill(np.nan)
+    for i in prange(array_data.shape[0]):
+        cdata = array_data[i, :, :]
+        nanpercentile[i] = np.nanpercentile(cdata[stable_mask == 1], p)
+    return nanpercentile
+
+
+# @njit(parallel=True)
+def nanIQR(array_data, stable_mask, p=[25,75]):
+    # nanpercentile_numba - calculates percentile p for masked area == 1
+    # expects 3 dimensions:
+    #  - dimension 0 contains time steps
+    #  - dimension 1 and 2 contain image data
+    nanpercentile_iqr = np.empty((array_data.shape[0]), dtype=np.float32)
+    nanpercentile_iqr.fill(np.nan)
+    for i in range(array_data.shape[0]):
+        cdata = array_data[i, :, :]
+        p25 = np.nanpercentile(cdata[stable_mask == 1], 25)
+        p75 = np.nanpercentile(cdata[stable_mask == 1], 75)
+        nanpercentile_iqr[i] = p75 - p25
+    return nanpercentile_iqr
+
+
+@njit(parallel=True)
 def nanvar_numba(array_data):
     # nanvar_numba - calculates nanvar in parallel mode using numba
     # expects 3 dimensions:
@@ -791,6 +821,51 @@ def plot_mask_sum(ts_dangle_mask_sum, nre, masksum_fname):
     cb1.set_label('data percentage (%)')
     fig.tight_layout()
     fig.savefig(masksum_fname)
+
+
+def plot_stable_mask(stable_mask, directions_sd, nre, stable_mask_fname):
+    fig, ax = plt.subplots(1, 2, figsize=(16, 8), dpi=300)
+    im0 = ax[0].imshow(directions_sd, cmap='viridis', vmin=0, vmax=90)
+    cb0 = plt.colorbar(im0, ax=ax[0], location='bottom', pad=0.1)
+    cb0.set_label('Std. Dev. Directions (degree)')
+    ax[0].set_title('Standard deviation of directions through time (n=%d)'%nre, fontsize=14)
+
+    im1 = ax[1].imshow(stable_mask, cmap='gray_r')
+    ax[1].set_title('Inverted landslide mask (stable terrain == 1, n=%d)'%nre, fontsize=14)
+    cb1 = fig.colorbar(im1, ax=ax[1], location='bottom', pad=0.1)
+    cb1.set_label('mask')
+    fig.tight_layout()
+    fig.savefig(stable_mask_fname)
+
+
+def plot_stable_mask_iqr_ts(dx_stack_iqr, dy_stack_iqr, nre, stable_mask_iqr_ts_fname):
+    ylim = np.nanmax(np.r_[dx_stack_iqr, dy_stack_iqr])
+    fig, ax = plt.subplots(1, 3, figsize=(16, 8), dpi=300)
+    ax[0].plot(dx_stack_iqr)
+    ax[0].set_xlabel('Timestep (nr. of correlation)')
+    ax[0].set_ylabel('dx IQR')
+    ax[0].grid()
+    ax[0].set_ylim([0, ylim])
+    ax[0].set_xlim([0, len(dx_stack_iqr)])
+    ax[0].set_title('dx IQR for each timestep (n=%d)'%nre, fontsize=14)
+
+    ax[1].plot(dy_stack_iqr)
+    ax[1].set_xlabel('Timestep (nr. of correlation)')
+    ax[1].set_ylabel('dy IQR')
+    ax[1].grid()
+    ax[1].set_ylim([0, ylim])
+    ax[1].set_xlim([0, len(dy_stack_iqr)])
+    ax[1].set_title('dy IQR for each timestep (n=%d)'%nre, fontsize=14)
+
+    ax[2].plot(dx_stack_iqr, dy_stack_iqr, 'x')
+    ax[2].set_xlabel('dx IQR')
+    ax[2].set_ylabel('dy IQR')
+    ax[2].grid()
+    ax[2].set_ylim([0, ylim])
+    ax[2].set_ylim([0, ylim])
+    ax[2].set_title('Relation between dx and dy IQR (n=%d)'%nre, fontsize=14)
+    fig.tight_layout()
+    fig.savefig(stable_mask_iqr_ts_fname)
 
 
 def plot_direction_sd_mask(directions_sd, mask, nre, directions_sd_fname):

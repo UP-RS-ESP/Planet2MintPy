@@ -104,17 +104,18 @@ if __name__ == '__main__':
     args = cmdLineParser()
 
     # Debugging
-#    parser = argparse.ArgumentParser(description='Create confidence values')
-#    args = parser.parse_args()
-#    args.method=2
-#    args.offset_tif_fn="disparity_maps/*_polyfit-F.tif"
-#    args.mask = False
-#    args.npy_out_path='npy'
-#    args.area_name='aoi3'
-#    args.confidence_tif_out_path='confidence'
-#    args.kernel_size=9
-#    args.sensor='PS'
-#    args.threshold_size = 1000
+   # parser = argparse.ArgumentParser(description='Create confidence values')
+   # args = parser.parse_args()
+   # args.method=2
+   # args.offset_tif_fn="disparity_maps/*_polyfit-F.tif"
+   # args.mask = False
+   # args.npy_out_path='npy'
+   # args.area_name='aoi3'
+   # args.confidence_tif_out_path='confidence'
+   # args.kernel_size=9
+   # args.sensor='PS'
+   # args.threshold_size = 1000
+   # args.threshold_angle = 45
 
 
     kernel_size = args.kernel_size
@@ -152,8 +153,11 @@ if __name__ == '__main__':
     date1_stack_fname = area_name + "_date1.npy.gz"
     deltay_stack_fname = area_name + "_deltay.npy.gz"
     ts_dangle_mask_npy_fname = area_name + '_filtered_ts_dangle_mask.npy.gz'
+    ts_stable_mask_npy_fname = area_name + '_filtered_ts_stable_mask.npy.gz'
     directions_sd_mask_npy_fname = area_name + '_directions_sd_mask.npy.gz'
     directions_sd_mask_geotiff_fname = area_name + '_directions_sd_mask.tif'
+    dx_stack_iqr_fn = area_name + '_dx_iqr.npy.gz'
+    dy_stack_iqr_fn = area_name + '_dy_iqr.npy.gz'
 
     # load first dataset and get size of array
     filelist = glob.glob(args.offset_tif_fn)
@@ -566,8 +570,8 @@ if __name__ == '__main__':
 
         # could also use median-smoothed dx and dy stack
         directions = cc.calc_angle_numba(dx_stack, dy_stack) # returns angles in degree
-        del dx_stack
-        del dy_stack # remove from memory
+        # del dx_stack
+        # del dy_stack # remove from memory
         print('Calculating std. dev. of angles through time')
         # dir_var = cc.angle_variance(directions) # angle_variance scaled between 0 and 1
         directions_sd = cc.nanstd_numba(directions)
@@ -602,16 +606,76 @@ if __name__ == '__main__':
             f.close()
             f = None
 
-        # Use mask (only valid areas) and calculate confidence from direction offset only for landslide areas
+        # Invert landslide mask to obtain statistics for stable terrain
+        stable_mask = np.ones(mask.shape, dtype=np.int8)
+        stable_mask[mask == 1] = 0
+        #mask out nan border regions
+        stable_mask[np.isnan(directions_sd)] = 0
+        stable_mask_fname = area_name + '_stable_mask.png'
+        cc.plot_stable_mask(stable_mask, directions_sd, date0_stack.shape[0], stable_mask_fname)
 
         # Use mask (only valid areas) and calculate confidence from direction offset only for stable terrain
+        # go through all dx and dy timesteps to calculate percentiles
+        ### Load files: dx_stack and dy_stack
+        # print('Load dx data')
+        # f = gzip.GzipFile(dx_npy_fname, "r")
+        # dx_stack = np.load(f)
+        # f = None
+        print('Calculating IQR for dx')
+        dx_stack_iqr = cc.nanIQR(dx_stack, stable_mask, p=[25, 75])
+        del dx_stack
 
+        # print('Load dy data')
+        # f = gzip.GzipFile(dy_npy_fname, "r")
+        # dy_stack = np.load(f)
+        # f = None
+        print('Calculating IQR for dy')
+        dy_stack_iqr = cc.nanIQR(dy_stack, stable_mask, p=[25, 75])
+        del dy_stack
 
-        # Export mask to tif files (mask is the same for each time step)
+        stable_mask_iqr_ts_fname = area_name + '_stable_mask_iqr_ts.png'
+        cc.plot_stable_mask_iqr_ts(dx_stack_iqr, dy_stack_iqr, date0_stack.shape[0], stable_mask_iqr_ts_fname)
+
+        # Export values to npy files
+        if os.path.exists(dx_stack_iqr_fn) is False:
+            f = gzip.GzipFile(dx_stack_iqr_fn, "w")
+            np.save(file=f, arr=dx_stack_iqr)
+            f.close()
+            f = None
+
+        if os.path.exists(dy_stack_iqr_fn) is False:
+            f = gzip.GzipFile(dy_stack_iqr_fn, "w")
+            np.save(file=f, arr=dy_stack_iqr)
+            f.close()
+            f = None
+
+        # Export values to tif files (mask is the same for each time step)
+        # copy confidence value into array and turn into time series
+        print('Creating dx iqr timeseries stack')
+        dx_stack_iqr_ar = np.ones((len(dx_stack_iqr), mask.shape[0], mask.shape[1]), dtype=np.float32)
+        for i in range(dx_stack_iqr_ar.shape[0]):
+            dx_stack_iqr_ar[i,:,:] *= dx_stack_iqr[i]
+            dx_stack_iqr_ar[i,:,:][np.isnan(directions_sd)] = np.nan
+
+        print('Write dx iqr to geotiff timeseries')
         if os.path.exists(args.confidence_tif_out_path) == False:
             os.mkdir(args.confidence_tif_out_path)
-        # cc.write_Geotiff_ts(input_tif, ts_dangle, date0_stack, date1_stack,
-        #        output_prefix=args.area_name, output_postfix='confidence', output_dir=args.confidence_tif_out_path)
+        cc.write_Geotiff_ts(input_tif, dx_stack_iqr_ar, date0_stack, date1_stack,
+               output_prefix=args.area_name, output_postfix='dx_iqr', output_dir=args.confidence_tif_out_path)
+
+        print('Creating dy iqr timeseries stack')
+        dy_stack_iqr_ar = np.ones((len(dy_stack_iqr), mask.shape[0], mask.shape[1]), dtype=np.float32)
+        for i in range(dy_stack_iqr_ar.shape[0]):
+            dy_stack_iqr_ar[i,:,:] *= dy_stack_iqr[i]
+            dy_stack_iqr_ar[i,:,:][np.isnan(directions_sd)] = np.nan
+
+        print('Write dx iqr to geotiff timeseries')
+        if os.path.exists(args.confidence_tif_out_path) == False:
+            os.mkdir(args.confidence_tif_out_path)
+        cc.write_Geotiff_ts(input_tif, dy_stack_iqr_ar, date0_stack, date1_stack,
+               output_prefix=args.area_name, output_postfix='dy_iqr', output_dir=args.confidence_tif_out_path)
+
+        #write mask file - only landslide areas are valid points
         cc.write_Geotiff_ts_mask(input_tif, mask, date0_stack, date1_stack,
                                             output_prefix=args.area_name, output_postfix='mask', output_dir=args.confidence_tif_out_path)
 

@@ -21,7 +21,7 @@ and a package via pip:
 pip install install numba-progress
 ```
 
-You will need to set the PATH to the directory containing the python files for computing the confidence intervals:
+You will need to set the PATH to the directory containing the python files for computing the confidence intervals, for example:
 ```bash
 export PYTHONPATH=$PYTHONPATH:/home/bodo/Dropbox/soft/github/Planet2MintPy
 ```
