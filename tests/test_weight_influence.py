@@ -15,7 +15,8 @@ from tqdm import tqdm
 import os
 import gzip
 from skimage import measure
-
+import json
+import subprocess
 
 def read_file(file, b=1):
     with rasterio.open(file) as src:
@@ -25,8 +26,8 @@ def fixed_val_scaler(x, xmin, xmax):
 
 #####DATA EXTRACTION###################################################################################################
 
-# file_loc = "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi6/*/disparity_maps/*_polyfit-F.tif"
-# mask= "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi6/masks/aoi6_region1.npy.gz"
+# file_loc = "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi7/*/disparity_maps/shadow_masked/*shadow_masked_polyfit-F.tif"
+# mask= "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi7/masks/aoi7_region1.npy.gz"
 
 
 # f = gzip.GzipFile(mask, "r")
@@ -54,12 +55,12 @@ def fixed_val_scaler(x, xmin, xmax):
 # names = [os.path.basename(f) for f in file_list]
 
 # df = pd.DataFrame({"name:":names, "dx":dxs, "dy": dys})
-# df.to_csv(f"dx_dy_x{x}_y{y}.csv", index = False)
+# df.to_csv(f"dx_dy_x{x}_y{y}_shadow_masked.csv", index = False)
 
 
-##DATA PREP#########################################################################################################
+#DATA PREP#########################################################################################################
 
-max_iqr = 0.5
+max_iqr = 1
 
 #aoi6 example
 # df = pd.read_csv("./dx_dy_x1001_y1016.csv")
@@ -79,15 +80,74 @@ df = df.drop(columns = "file")
 df["date0"] = pd.to_datetime([f[0:8] for f in df["name:"]])
 df["date1"] = pd.to_datetime([f.split("_")[3] if len(f.split("_")[3]) == 8 else f.split("_")[4] for f in df["name:"]])
 df["dt"] = (df.date1 - df.date0).dt.days
-#df = df.loc[df.dt >= 365*2]
+#df = df.loc[df.dt >= 365]
 
-#remove jun/july
-# df = df.loc[(df.date0.dt.month < 6) | (df.date0.dt.month > 7)]
-# df = df.loc[(df.date1.dt.month < 6) | (df.date1.dt.month > 7)]
 df = df.reset_index(drop = True)
 
+#######ADD#ILLUMINATION#############################################################################################
+
+df["id1"] = df["name:"].apply(lambda x: ("_").join(x.split("_")[0:3]) if len(x.split("_")[3]) == 8 else ("_").join(x.split("_")[0:4]))
+df["id2"] = df["name:"].apply(lambda x: ("_").join(x.split("_")[3:]) if len(x.split("_")[3]) == 8 else ("_").join(x.split("_")[4:]))
+df["id2"] = df["id2"].apply(lambda x: ("_").join(x.split("_")[0:3]) if (x.split("_")[3] == "L3B") else ("_").join(x.split("_")[0:4]))
+
+ids = pd.concat([df.id1, df.id2]).unique()
+
+search = f"planet data filter --string-in id {','.join(ids)} > filter.json"
+result = subprocess.run(search, shell = True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+if result.stderr != "":
+    print(result.stderr)
+search = "planet data search PSScene --limit 0 --filter filter.json > search.geojson"
+
+result = subprocess.run(search, shell = True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+if result.stderr != "":
+    print(result.stderr)
+    
+gj = [json.loads(line) for line in open("search.geojson", "r")]
 
 
+sun = pd.DataFrame({"id": [f["id"] for f in gj], "sun_az": [f["properties"]["sun_azimuth"] for f in gj], "sun_elev": [f["properties"]["sun_elevation"] for f in gj]})
+df = df.merge(sun, left_on = "id1", right_on = "id")
+df = df.merge(sun, left_on = "id2", right_on = "id", suffixes = ("_ref", "_sec"))
+df.drop(["id1", "id2"], inplace = True, axis = 1)
+
+
+df["sun_elev_diff"] = abs(df.sun_elev_ref-df.sun_elev_sec)
+df["sun_az_diff"] = abs(df.sun_az_ref-df.sun_az_sec)
+###
+
+fig, ax = plt.subplots(2, 1, figsize = (12, 10))
+
+p = ax[0].scatter(df.dt, df.dx, c = df["sun_elev_diff"])
+ax[0].set_xlabel("Temporal baseline [days]")
+ax[0].set_ylabel("Dx [pix]")
+plt.colorbar(p, label = "Difference in sun elevation [°]", ax = ax[0])
+
+p = ax[1].scatter(df.dt, df.dy, c = df["sun_elev_diff"])
+ax[1].set_xlabel("Temporal baseline [days]")
+ax[1].set_ylabel("Dy [pix]")
+plt.colorbar(p, label = "Difference in sun elevation [°]", ax = ax[1])
+
+ax[0].grid()
+ax[1].grid()
+
+###
+
+fig, ax = plt.subplots(2, 1, figsize = (12, 10))
+
+p = ax[0].scatter(df.dt, df.dx, c = df["sun_az_diff"])
+ax[0].set_xlabel("Temporal baseline [days]")
+ax[0].set_ylabel("Dx [pix]")
+plt.colorbar(p, label = "Difference in sun azimuth [°]", ax = ax[0])
+
+p = ax[1].scatter(df.dt, df.dy, c = df["sun_az_diff"])
+ax[1].set_xlabel("Temporal baseline [days]")
+ax[1].set_ylabel("Dy [pix]")
+plt.colorbar(p, label = "Difference in sun azimuth [°]", ax = ax[1])
+
+ax[0].grid()
+ax[1].grid()
+
+###################################################################################################################
 fig, ax = plt.subplots(2, 1, figsize = (12, 10))
 
 p = ax[0].scatter(df.dt, df.dx, c = df.dx_iqr)
@@ -147,6 +207,8 @@ ax[1].grid()
 
 df = df.loc[df.dx_iqr <= max_iqr]
 df = df.loc[df.dy_iqr <= max_iqr]
+# df = df.loc[df["sun_az_diff"] <= 20]
+# df = df.loc[df["sun_elev_diff"] <= 20]
 
 
 df = df.sort_values(by=['date0'])
@@ -165,15 +227,19 @@ for idx in range(len(df)):
 
 fig, ax = plt.subplots(2, 1, figsize = (12,10))
 for i, d in enumerate(["x", "y"]):
-    w = df[f"d{d}_iqr"]
-    for exp in ["1-w", "1/w", "1/(w)**2", "1/(w)**4"]:
+    w = df[f"d{d}_iqr"]#fixed_val_scaler(df["sun_az_diff"], 0, 20)
+    for exp in  ["1-w", "1/w", "1/(w)**2", "1/(w)**4"]:
         W = np.diag(eval(exp))
         Aw = np.dot(W,design_matrix)
         Bw = np.dot(np.array(df[f"d{d}"]),W)
-    
-        X , _, _, _ = np.linalg.lstsq(Aw, Bw, rcond=None)
-        ax[i].plot(timesteps.date0, np.cumsum(X))
-        ax[i].scatter(timesteps.date0, np.cumsum(X), label = exp)
+        
+        try:
+            X , _, _, _ = np.linalg.lstsq(Aw, Bw, rcond=None)
+            ax[i].plot(timesteps.date0, np.cumsum(X))
+            ax[i].scatter(timesteps.date0, np.cumsum(X), label = exp)
+        except SystemError:
+            print("No solution found.")
+            pass
         
         
     X , _, _, _ = np.linalg.lstsq(design_matrix, np.array(df[f"d{d}"]), rcond = None)
@@ -189,7 +255,7 @@ for i, d in enumerate(["x", "y"]):
 ax[0].grid()
 ax[1].grid()
 
-
+plt.savefig("example.png", dpi = 300)
 ###ALTERNATIVE#TRY##################################################################################
 #averages all measurements per timestep - works but oversmoothes timeseries
 

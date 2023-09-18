@@ -63,7 +63,6 @@ img2 = cv.imread(f, cv.IMREAD_UNCHANGED)
 comp = f"/home/ariane/Documents/PlanetScope/Siguas/L3B/stereo/{id1}_{id2}L3B_polyfit-F.tif"
 
 
-
 flow = cv.calcOpticalFlowFarneback(img1, img2, None, 0.5, 10, 35, 5, 5, 1.2, 0)
 
 dx = flow[:,:,0]
