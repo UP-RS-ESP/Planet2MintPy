@@ -203,8 +203,8 @@ if __name__ == '__main__':
 
     files = glob.glob("/home/ariane/Documents/Project3/PlanetScope_Data/aoi7/*/disparity_maps/*L3B_polyfit-F.tif")
     mask_fn = "/home/ariane/Documents/Project3/PlanetScope_Data/aoi7/masks/aoi7_region1.npy.gz"
-    files = glob.glob("/raid/Planet_NWArg/PS2_aoi7/disparity_maps/*L3B_polyfit-F.tif")
-    mask_fn = "/raid/Planet_NWArg/PS2_aoi7/masks/aoi7_region1.npy.gz"
+    # files = glob.glob("/raid/Planet_NWArg/PS2_aoi7/disparity_maps/*L3B_polyfit-F.tif")
+    # mask_fn = "/raid/Planet_NWArg/PS2_aoi7/masks/aoi7_region1.npy.gz"
     bns = [os.path.basename(f) for f in files]
     dx_stack = np.asarray([read_file(f,1) for f in files])
     dy_stack = np.asarray([read_file(f,2) for f in files])
