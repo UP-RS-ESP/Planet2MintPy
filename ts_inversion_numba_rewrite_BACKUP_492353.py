@@ -233,6 +233,52 @@ def NSBAS_noweights_numbaII(A, y, tbase_diff, tbase, nre, gamma=1e-4, rcond=1e-5
     return ts, residuals, ranks, vel, vconst
 
 
+#@njit(parallel=True)
+def NSBAS_noweights_numba(A, y, tbase_diff, tbase, nre, gamma=1e-4, rcond=1e-5):
+    #numba-based inversion with no weights
+    num_date = A.shape[1] + 1
+    num_im = A.shape[0]
+    ts = np.empty((num_date, nre), dtype=np.float32)
+    ts.fill(np.nan)
+    residuals = np.empty((A.shape[0], nre), dtype=np.float32)
+    residuals.fill(np.nan)
+    ranks = np.empty(nre, dtype=np.float32)
+    ranks.fill(np.nan)
+    vconst = np.empty(nre, dtype=np.float32)
+    vconst.fill(np.nan)
+    vel = np.empty(nre, dtype=np.float32)
+    vel.fill(np.nan)
+
+    ### Set matrix of NSBAS part (bottom)
+    Gbl = np.tril(np.ones((num_date, num_date-1), dtype=np.float32), k=-1) #lower tri matrix without diag
+    Gbr = -np.ones((num_date, 2), dtype=np.float32)
+    Gbr[:, 0] = -tbase
+    # Gbr[:, 0] = tbase_diff
+    Gb = np.concatenate((Gbl, Gbr), axis=1)*gamma
+    Gt = np.concatenate((A, np.zeros((num_im, 2), dtype=np.float32)), axis=1)
+    Gt = np.concatenate((A, np.ones((num_im, 2), dtype=np.float32)), axis=1)
+    Gall = np.float32(np.concatenate((Gt, Gb)))
+
+    #will do pixel-by-pixel inversion, because some pixels may not have data
+    for i in prange(nre):
+        y2 = np.concatenate((y[:, i], np.zeros((num_date), dtype=np.float32))).transpose()
+        if np.any(np.isnan(y2)) or np.any(np.isinf(y2)):
+            continue
+        X, residual, ranks[i], _ = np.linalg.lstsq(Gall.astype(np.float64), y2, rcond=rcond)
+        if residual.size > 0:
+            residuals[:,i] = residual
+        else:
+            residuals[:,i] = A.astype(np.float64).dot(X[1:-1])
+        ts_diff = X[:num_date-1] * tbase_diff[:,0] #Incremental displacement (num_date-1, n_pt)
+        # ts_diff = X[:num_date-1] * tbase_diff[1:] #Incremental displacement (num_date-1, n_pt)
+        vel[i] = X[num_date-1] #Velocity (n_pt)
+        vconst[i] = X[num_date] #Constant part of linear velocity (c of vt+c) (n_pt)
+
+        ts[0,:] = np.zeros(nre, dtype=np.float32)
+        ts[1:, i] = np.cumsum(ts_diff)
+    return ts, residuals, ranks, vel, vconst
+
+
 def read_file(fn, b=1):
     ds = gdal.Open(fn)
     data = ds.GetRasterBand(b).ReadAsArray()
@@ -247,6 +293,7 @@ def min_max_scaler(x):
     else:
         return np.array([])
 
+<<<<<<< HEAD
 def get_scene_id(fn):
     
     #extract the scene id from a PS scene filename
@@ -280,6 +327,8 @@ def get_date(scene_id):
     return datetime.datetime.strptime(scene_id[0:8], "%Y%m%d")
 
 
+=======
+>>>>>>> 57fb918115e3a20fa5f9d3b5a4e8ac716a232d5f
 def get_sun_pos(files):
 
     import subprocess
@@ -387,6 +436,7 @@ if __name__ == '__main__':
     fig.tight_layout()
     fig.savefig(os.path.join(png_out_path, 'dx_dy_my_inversion.png'), dpi=300)
 
+<<<<<<< HEAD
     ######################################################################################################################
     #Bodos approach
     ######################################################################################################################
@@ -397,6 +447,12 @@ if __name__ == '__main__':
     # mask_fn = "/raid/Planet_NWArg/PS2_aoi7/masks/aoi7_region1.npy.gz"
     files = glob.glob("/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi7/all_scenes/disparity_maps/*L3B_polyfit-F.tif")
     mask_fn = "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi7/masks/aoi7_region1.npy.gz"
+=======
+    files = glob.glob("/home/ariane/Documents/Project3/PlanetScope_Data/aoi7/*/disparity_maps/*L3B_polyfit-F.tif")
+    mask_fn = "/home/ariane/Documents/Project3/PlanetScope_Data/aoi7/masks/aoi7_region1.npy.gz"
+    # files = glob.glob("/raid/Planet_NWArg/PS2_aoi7/disparity_maps/*L3B_polyfit-F.tif")
+    # mask_fn = "/raid/Planet_NWArg/PS2_aoi7/masks/aoi7_region1.npy.gz"
+>>>>>>> 57fb918115e3a20fa5f9d3b5a4e8ac716a232d5f
     bns = [os.path.basename(f) for f in files]
     dx_stack = np.asarray([read_file(f,1) for f in files])
     dy_stack = np.asarray([read_file(f,2) for f in files])
@@ -410,6 +466,14 @@ if __name__ == '__main__':
 
     area_name = "aoi7"
     deltay_stack_scale = 2
+<<<<<<< HEAD
+=======
+
+
+    png_out_path = "./png"
+    if not os.path.exists(png_out_path):
+        os.mkdir(png_out_path)
+>>>>>>> 57fb918115e3a20fa5f9d3b5a4e8ac716a232d5f
 
 
     # Extract values only for masked areas
