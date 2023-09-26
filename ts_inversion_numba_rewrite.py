@@ -188,50 +188,6 @@ def NSBAS_noweights_numba(A, y, tbase_diff, tbase, nre, gamma=1e-4, rcond=1e-5):
         ts[1:, i] = np.cumsum(ts_diff)
     return ts, residuals, ranks, vel, vconst
 
-def NSBAS_noweights_numbaII(A, y, tbase_diff, tbase, nre, gamma=1e-4, rcond=1e-5):
-    #numba-based inversion with no weights
-    num_date = A.shape[1] + 1
-    num_im = A.shape[0]
-    ts = np.empty((num_date, nre), dtype=np.float32)
-    ts.fill(np.nan)
-    residuals = np.empty((A.shape[0], nre), dtype=np.float32)
-    residuals.fill(np.nan)
-    ranks = np.empty(nre, dtype=np.float32)
-    ranks.fill(np.nan)
-    vconst = np.empty(nre, dtype=np.float32)
-    vconst.fill(np.nan)
-    vel = np.empty(nre, dtype=np.float32)
-    vel.fill(np.nan)
-
-    ### Set matrix of NSBAS part (bottom)
-    Gbl = np.tril(np.ones((num_date, num_date-1), dtype=np.float32), k=-1) #lower tri matrix without diag
-    Gbr = -np.ones((num_date, 2), dtype=np.float32)
-    Gbr[:, 0] = -tbase
-    # Gbr[:, 0] = tbase_diff
-    Gb = np.concatenate((Gbl, Gbr), axis=1)*gamma
-    Gt = np.concatenate((A, np.zeros((num_im, 2), dtype=np.float32)), axis=1)
-    Gt = np.concatenate((A, np.ones((num_im, 2), dtype=np.float32)), axis=1)
-    Gall = np.float32(np.concatenate((Gt, Gb)))
-
-    #will do pixel-by-pixel inversion, because some pixels may not have data
-    for i in prange(nre):
-        y2 = np.concatenate((y[:, i], np.zeros((num_date), dtype=np.float32))).transpose()
-        if np.any(np.isnan(y2)) or np.any(np.isinf(y2)):
-            continue
-        X, residual, ranks[i], _ = np.linalg.lstsq(Gall.astype(np.float64), y2, rcond=rcond)
-        if residual.size > 0:
-            residuals[:,i] = residual
-        else:
-            residuals[:,i] = A.astype(np.float64).dot(X[1:-1])
-        ts_diff = X[:num_date-1] * tbase_diff[:,0] #Incremental displacement (num_date-1, n_pt)
-        # ts_diff = X[:num_date-1] * tbase_diff[1:] #Incremental displacement (num_date-1, n_pt)
-        vel[i] = X[num_date-1] #Velocity (n_pt)
-        vconst[i] = X[num_date] #Constant part of linear velocity (c of vt+c) (n_pt)
-
-        ts[0,:] = np.zeros(nre, dtype=np.float32)
-        ts[1:, i] = np.cumsum(ts_diff)
-    return ts, residuals, ranks, vel, vconst
-
 
 def read_file(fn, b=1):
     ds = gdal.Open(fn)
@@ -481,38 +437,38 @@ if __name__ == '__main__':
     fig.tight_layout()
     fig.savefig(os.path.join(png_out_path, '%s_dx_dy_SBAS_NSBAS_inversion.png'%area_name), dpi=300)
 
-    #weighted
-    sun = get_sun_pos(files)
-    dates_df = pd.DataFrame({'date0': dates0, 'date1': dates1})
+    #weighted planet not installed on server so I am removing weighting
+    # sun = get_sun_pos(files)
+    # dates_df = pd.DataFrame({'date0': dates0, 'date1': dates1})
 
-    weight_df = pd.merge(dates_df, sun, left_on='date0', right_on='date', how='inner')
-    weight_df = pd.merge(weight_df, sun, left_on='date1', right_on='date', how='inner', suffixes = ("_ref", "_sec"))
-    weight_df.drop(["date_ref", "date_sec"], inplace = True, axis = 1)
+    # weight_df = pd.merge(dates_df, sun, left_on='date0', right_on='date', how='inner')
+    # weight_df = pd.merge(weight_df, sun, left_on='date1', right_on='date', how='inner', suffixes = ("_ref", "_sec"))
+    # weight_df.drop(["date_ref", "date_sec"], inplace = True, axis = 1)
 
-    weights = 1-min_max_scaler(np.array(abs(weight_df.sun_az_ref - weight_df.sun_az_sec)))
+    # weights = 1-min_max_scaler(np.array(abs(weight_df.sun_az_ref - weight_df.sun_az_sec)))
 
-    print('Run linear inversion on each pixel with weights')
-    print('\t dx')
-    dx_ts_weights_numba, dx_residuals_weights_numba, dx_ranks_weights_numba = linalg_weighted_numba(A, dx_stack_masked, weights, tbase_diff, nre, rcond=1e-5)
-    print('\t dy')
-    dy_ts_weights_numba, dy_residuals_weights_numba, dy_ranks_weights_numba = linalg_weighted_numba(A, dy_stack_masked, weights, tbase_diff, nre, rcond=1e-5)
+    # print('Run linear inversion on each pixel with weights')
+    # print('\t dx')
+    # dx_ts_weights_numba, dx_residuals_weights_numba, dx_ranks_weights_numba = linalg_weighted_numba(A, dx_stack_masked, weights, tbase_diff, nre, rcond=1e-5)
+    # print('\t dy')
+    # dy_ts_weights_numba, dy_residuals_weights_numba, dy_ranks_weights_numba = linalg_weighted_numba(A, dy_stack_masked, weights, tbase_diff, nre, rcond=1e-5)
 
 
     # dx and dy time series plot
-    fig, ax = plt.subplots(1, 2, figsize=(12,5))
-    ax[0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_SBAS_noweights_numba, axis=1), '-', color='darkblue', label='No weights')
-    ax[0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_weights_numba, axis=1), '-', color='firebrick', label='Weighted')
-    ax[0].set_title('Mean dx offset (n=%d)'%nre, fontsize=14)
-    ax[0].set_xlabel('Time [y]')
-    ax[0].set_ylabel('Cumulative dx offset [pix]')
-    ax[0].legend()
-    ax[0].grid()
-    ax[1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_SBAS_noweights_numba, axis=1), '-', color='darkblue', label='No weights')
-    ax[1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_weights_numba, axis=1), '-', color='firebrick', label='Weighted')
-    ax[1].set_title('Mean dy offset (n=%d)'%nre, fontsize=14)
-    ax[1].set_xlabel('Time [y]')
-    ax[1].set_ylabel('Cumulative dy offset [pix]')
-    ax[1].legend()
-    ax[1].grid()
-    fig.tight_layout()
-    fig.savefig(os.path.join(png_out_path, '%s_dx_dy_timeseries_scaled_with_different_weights.png'%area_name), dpi=300)
+    # fig, ax = plt.subplots(1, 2, figsize=(12,5))
+    # ax[0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_SBAS_noweights_numba, axis=1), '-', color='darkblue', label='No weights')
+    # ax[0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_weights_numba, axis=1), '-', color='firebrick', label='Weighted')
+    # ax[0].set_title('Mean dx offset (n=%d)'%nre, fontsize=14)
+    # ax[0].set_xlabel('Time [y]')
+    # ax[0].set_ylabel('Cumulative dx offset [pix]')
+    # ax[0].legend()
+    # ax[0].grid()
+    # ax[1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_SBAS_noweights_numba, axis=1), '-', color='darkblue', label='No weights')
+    # ax[1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_weights_numba, axis=1), '-', color='firebrick', label='Weighted')
+    # ax[1].set_title('Mean dy offset (n=%d)'%nre, fontsize=14)
+    # ax[1].set_xlabel('Time [y]')
+    # ax[1].set_ylabel('Cumulative dy offset [pix]')
+    # ax[1].legend()
+    # ax[1].grid()
+    # fig.tight_layout()
+    # fig.savefig(os.path.join(png_out_path, '%s_dx_dy_timeseries_scaled_with_different_weights.png'%area_name), dpi=300)
