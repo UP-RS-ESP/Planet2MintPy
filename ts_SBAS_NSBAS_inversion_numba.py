@@ -128,7 +128,7 @@ def NSBAS_noweights_numba(G, y, tbase, gamma=1e-4, rcond=1e-10):
     cum_def = np.zeros((n_im, n_pt), dtype=np.float32)*np.nan
     vel = np.zeros((n_pt), dtype=np.float32)*np.nan
     vconst = np.zeros((n_pt), dtype=np.float32)*np.nan
-    residuals = np.empty((G.shape[0], n_pt), dtype=np.float32)
+    residuals = np.empty((n_ifg, n_pt), dtype=np.float32)
     residuals.fill(np.nan)
 
     ### Set matrix of NSBAS part (bottom)
@@ -335,18 +335,18 @@ if __name__ == '__main__':
     ax[0,1].set_ylabel('Cumulative dy offset [pix]')
     ax[0,1].legend()
     ax[0,1].grid()
-    ax[1,0].plot(dates0, np.nanmean(dx_residuals_SBAS_noweights_numba, axis=1), '+', color='darkblue', label='SBAS')
-    ax[1,0].plot(dates0, np.nanmean(dx_residuals_NSBAS_noweights_numba, axis=1), 'o', color='firebrick', label='NSBAS')
+    ax[1,0].plot(dates0, np.nanmean(dx_residuals_NSBAS_noweights_numba, axis=1), 'o', color='darkblue', label='NSBAS')
+    ax[1,0].plot(dates0, np.nanmean(dx_residuals_SBAS_noweights_numba, axis=1), '+', color='firebrick', label='SBAS')
     ax[1,0].set_title('dx residuals (n=%d)'%nre, fontsize=14)
     ax[1,0].set_xlabel('Starting date of correlation pair')
-    ax[1,0].set_ylabel('Mean Residual')
+    ax[1,0].set_ylabel('Mean Residual [pix]')
     ax[1,0].legend()
     ax[1,0].grid()
-    ax[1,1].plot(dates0, np.nanmean(dy_residuals_SBAS_noweights_numba, axis=1), '+', color='darkblue', label='SBAS')
-    ax[1,1].plot(dates0, np.nanmean(dy_residuals_NSBAS_noweights_numba, axis=1), 'o', color='firebrick', label='NSBAS')
+    ax[1,1].plot(dates0, np.nanmean(dy_residuals_NSBAS_noweights_numba, axis=1), 'o', color='darkblue', label='NSBAS')
+    ax[1,1].plot(dates0, np.nanmean(dy_residuals_SBAS_noweights_numba, axis=1), '+', color='firebrick', label='SBAS')
     ax[1,1].set_title('dy residuals (n=%d)'%nre, fontsize=14)
     ax[1,1].set_xlabel('Starting date of correlation pair')
-    ax[1,1].set_ylabel('Mean Residual')
+    ax[1,1].set_ylabel('Mean Residual [pix]')
     ax[1,1].legend()
     ax[1,1].grid()
     fig.tight_layout()
