@@ -24,6 +24,13 @@ def read_file(file, b=1):
 def fixed_val_scaler(x, xmin, xmax):
     return (x-xmin)/(xmax-xmin)
 
+def min_max_scaler(x):
+    if len(x)>1:
+        return (x-np.nanmin(x))/(np.nanmax(x)-np.nanmin(x))
+    elif len(x) == 1: 
+        return np.array([1])
+    else: 
+        return np.array([])
 #####DATA EXTRACTION###################################################################################################
 
 # file_loc = "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi7/*/disparity_maps/shadow_masked/*shadow_masked_polyfit-F.tif"
@@ -115,86 +122,86 @@ df["sun_elev_diff"] = abs(df.sun_elev_ref-df.sun_elev_sec)
 df["sun_az_diff"] = abs(df.sun_az_ref-df.sun_az_sec)
 ###
 
-fig, ax = plt.subplots(2, 1, figsize = (12, 10))
+# fig, ax = plt.subplots(2, 1, figsize = (12, 10))
 
-p = ax[0].scatter(df.dt, df.dx, c = df["sun_elev_diff"])
-ax[0].set_xlabel("Temporal baseline [days]")
-ax[0].set_ylabel("Dx [pix]")
-plt.colorbar(p, label = "Difference in sun elevation [°]", ax = ax[0])
+# p = ax[0].scatter(df.dt, df.dx, c = df["sun_elev_diff"])
+# ax[0].set_xlabel("Temporal baseline [days]")
+# ax[0].set_ylabel("Dx [pix]")
+# plt.colorbar(p, label = "Difference in sun elevation [°]", ax = ax[0])
 
-p = ax[1].scatter(df.dt, df.dy, c = df["sun_elev_diff"])
-ax[1].set_xlabel("Temporal baseline [days]")
-ax[1].set_ylabel("Dy [pix]")
-plt.colorbar(p, label = "Difference in sun elevation [°]", ax = ax[1])
+# p = ax[1].scatter(df.dt, df.dy, c = df["sun_elev_diff"])
+# ax[1].set_xlabel("Temporal baseline [days]")
+# ax[1].set_ylabel("Dy [pix]")
+# plt.colorbar(p, label = "Difference in sun elevation [°]", ax = ax[1])
 
-ax[0].grid()
-ax[1].grid()
+# ax[0].grid()
+# ax[1].grid()
 
-###
+# ###
 
-fig, ax = plt.subplots(2, 1, figsize = (12, 10))
+# fig, ax = plt.subplots(2, 1, figsize = (12, 10))
 
-p = ax[0].scatter(df.dt, df.dx, c = df["sun_az_diff"])
-ax[0].set_xlabel("Temporal baseline [days]")
-ax[0].set_ylabel("Dx [pix]")
-plt.colorbar(p, label = "Difference in sun azimuth [°]", ax = ax[0])
+# p = ax[0].scatter(df.dt, df.dx, c = df["sun_az_diff"])
+# ax[0].set_xlabel("Temporal baseline [days]")
+# ax[0].set_ylabel("Dx [pix]")
+# plt.colorbar(p, label = "Difference in sun azimuth [°]", ax = ax[0])
 
-p = ax[1].scatter(df.dt, df.dy, c = df["sun_az_diff"])
-ax[1].set_xlabel("Temporal baseline [days]")
-ax[1].set_ylabel("Dy [pix]")
-plt.colorbar(p, label = "Difference in sun azimuth [°]", ax = ax[1])
+# p = ax[1].scatter(df.dt, df.dy, c = df["sun_az_diff"])
+# ax[1].set_xlabel("Temporal baseline [days]")
+# ax[1].set_ylabel("Dy [pix]")
+# plt.colorbar(p, label = "Difference in sun azimuth [°]", ax = ax[1])
 
-ax[0].grid()
-ax[1].grid()
+# ax[0].grid()
+# ax[1].grid()
 
-###################################################################################################################
-fig, ax = plt.subplots(2, 1, figsize = (12, 10))
+# ###################################################################################################################
+# fig, ax = plt.subplots(2, 1, figsize = (12, 10))
 
-p = ax[0].scatter(df.dt, df.dx, c = df.dx_iqr)
-ax[0].set_xlabel("Temporal baseline [days]")
-ax[0].set_ylabel("Dx [pix]")
-plt.colorbar(p, label = "IQR Dx across stable terrain [pix]", ax = ax[0])
+# p = ax[0].scatter(df.dt, df.dx, c = df.dx_iqr)
+# ax[0].set_xlabel("Temporal baseline [days]")
+# ax[0].set_ylabel("Dx [pix]")
+# plt.colorbar(p, label = "IQR Dx across stable terrain [pix]", ax = ax[0])
 
-p = ax[1].scatter(df.dt, df.dy, c = df.dy_iqr)
-ax[1].set_xlabel("Temporal baseline [days]")
-ax[1].set_ylabel("Dy [pix]")
-plt.colorbar(p, label = "IQR Dy across stable terrain [pix]", ax = ax[1])
+# p = ax[1].scatter(df.dt, df.dy, c = df.dy_iqr)
+# ax[1].set_xlabel("Temporal baseline [days]")
+# ax[1].set_ylabel("Dy [pix]")
+# plt.colorbar(p, label = "IQR Dy across stable terrain [pix]", ax = ax[1])
 
-ax[0].grid()
-ax[1].grid()
-
-
-
-df.dx_iqr.loc[df.dx_iqr >= max_iqr] = np.nan
-df.dy_iqr.loc[df.dy_iqr >= max_iqr] = np.nan
-
-#scaling weights between 0 and 1
-df["wdx"] = df.dx_iqr.map(lambda x: fixed_val_scaler(x, 0, max_iqr))
-df["wdy"] = df.dy_iqr.map(lambda x: fixed_val_scaler(x, 0, max_iqr))
+# ax[0].grid()
+# ax[1].grid()
 
 
 
-df.wdx = 1 / (df.wdx**2)
-df.wdy = 1 / (df.wdy**2)
+# df.dx_iqr.loc[df.dx_iqr >= max_iqr] = np.nan
+# df.dy_iqr.loc[df.dy_iqr >= max_iqr] = np.nan
+
+# #scaling weights between 0 and 1
+# df["wdx"] = df.dx_iqr.map(lambda x: fixed_val_scaler(x, 0, max_iqr))
+# df["wdy"] = df.dy_iqr.map(lambda x: fixed_val_scaler(x, 0, max_iqr))
 
 
-#plot how confidence would look like
-fig, ax = plt.subplots(2, 1, figsize = (12, 10))
 
-ax[0].scatter(df.dt, df.dx, c = "lightgray")
-p = ax[0].scatter(df.dt, df.dx, c = df.wdx)
-ax[0].set_xlabel("Temporal baseline [days]")
-ax[0].set_ylabel("Dx [pix]")
-plt.colorbar(p, label = "Confidence 1/(w**2)", ax = ax[0])
+# df.wdx = 1 / (df.wdx**2)
+# df.wdy = 1 / (df.wdy**2)
 
-ax[1].scatter(df.dt, df.dy, c = "lightgray")
-p = ax[1].scatter(df.dt, df.dy, c = df.wdy)
-ax[1].set_xlabel("Temporal baseline [days]")
-ax[1].set_ylabel("Dy [pix]")
-plt.colorbar(p, label = "Confidence 1/(w**2)", ax = ax[1])
 
-ax[0].grid()
-ax[1].grid()
+# #plot how confidence would look like
+# fig, ax = plt.subplots(2, 1, figsize = (12, 10))
+
+# ax[0].scatter(df.dt, df.dx, c = "lightgray")
+# p = ax[0].scatter(df.dt, df.dx, c = df.wdx)
+# ax[0].set_xlabel("Temporal baseline [days]")
+# ax[0].set_ylabel("Dx [pix]")
+# plt.colorbar(p, label = "Confidence 1/(w**2)", ax = ax[0])
+
+# ax[1].scatter(df.dt, df.dy, c = "lightgray")
+# p = ax[1].scatter(df.dt, df.dy, c = df.wdy)
+# ax[1].set_xlabel("Temporal baseline [days]")
+# ax[1].set_ylabel("Dy [pix]")
+# plt.colorbar(p, label = "Confidence 1/(w**2)", ax = ax[1])
+
+# ax[0].grid()
+# ax[1].grid()
 
 
 # plt.figure(figsize = (12, 5))
@@ -205,10 +212,10 @@ ax[1].grid()
 
 ##INVERSION#####################################################################################
 
-df = df.loc[df.dx_iqr <= max_iqr]
-df = df.loc[df.dy_iqr <= max_iqr]
-# df = df.loc[df["sun_az_diff"] <= 20]
-# df = df.loc[df["sun_elev_diff"] <= 20]
+# df = df.loc[df.dx_iqr <= max_iqr]
+# df = df.loc[df.dy_iqr <= max_iqr]
+df = df.loc[df["sun_az_diff"] <= 60]
+df = df.loc[df["sun_elev_diff"] <= 60]
 
 
 df = df.sort_values(by=['date0'])
@@ -227,9 +234,11 @@ for idx in range(len(df)):
 
 fig, ax = plt.subplots(2, 1, figsize = (12,10))
 for i, d in enumerate(["x", "y"]):
-    w = df[f"d{d}_iqr"]#fixed_val_scaler(df["sun_az_diff"], 0, 20)
+    w = fixed_val_scaler(df["sun_az_diff"], 0, 60)
     for exp in  ["1-w", "1/w", "1/(w)**2", "1/(w)**4"]:
-        W = np.diag(eval(exp))
+        weights = eval(exp)
+        weights[np.isinf(weights)] = 0
+        W = np.diag(weights)
         Aw = np.dot(W,design_matrix)
         Bw = np.dot(np.array(df[f"d{d}"]),W)
         
