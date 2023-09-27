@@ -94,47 +94,63 @@ def create_design_matrix_incremental_displacement(num_ifgram, dates0, dates1):
     return A, ref_date, tbase
 
 
-@njit(parallel=True)
-def SBAS_noweights_numba(A, y, tbase_diff, num_pixel, rcond=1e-10):
+#@njit(parallel=True)
+def SBAS_noweights_numba(A, y, d_tbase, rcond=1e-10):
     #numba-based inversion with no weights
     num_date = A.shape[1] + 1
-    ts = np.zeros((num_date, nre), dtype=np.float32)
-    residuals = np.empty((A.shape[0], nre), dtype=np.float32)
+    n_ifg = y.shape[0]
+    n_pt = y.shape[1]
+    ts = np.zeros((num_date, n_pt), dtype=np.float32)
+    residuals = np.empty(n_pt, dtype=np.float32)
     residuals.fill(np.nan)
-    # ranks = np.empty(nre, dtype=np.float32)
-    # ranks.fill(np.nan)
+    r_squared = np.empty(n_pt, dtype=np.float32)
+    r_squared.fill(np.nan)
+    residual_each_date = np.empty((n_ifg, n_pt), dtype=np.float32)
+    residual_each_date.fill(np.nan)
 
     #will do pixel-by-pixel inversion, because some pixels may not have data
-    for i in prange(nre):
+    for i in prange(n_pt):
         y2 = y[:,i].astype(np.float64)
         if np.any(np.isnan(y2)) or np.any(np.isinf(y2)):
             continue
-        X, residual, _, _ = np.linalg.lstsq(A.astype(np.float64), y2, rcond=rcond)
+        X, _, _, _ = np.linalg.lstsq(A.astype(np.float64), y2, rcond=rcond)
         # X, residual, ranks[i], _ = np.linalg.lstsq(A.astype(np.float64), y2, rcond=rcond)
-        if residual.size > 0:
-            residuals[:,i] = residual
-        else:
-            residuals[:,i] = A.astype(np.float64).dot(X)
-        ts[1:, i] = np.cumsum(X)
-    return ts, residuals#, ranks
+        # for a time series with unconnected islands (rank > 1), there are no residuals returned
+        # and you can obtain them via: np.linalg.norm(A.astype(np.float64) @ X - y2)**2
+        X2 = X #* d_tbase
+        ts[1:, i] = np.cumsum(X2).astype(np.float32)
+        residuals[i] = np.linalg.norm(A.astype(np.float64) @ X - y2)**2
+        residual = y2-np.dot(A.astype(np.float64), X)
+        residual_each_date[:,i] = residual
+        # residual_sumsq = np.nansum(residual**2)
+        # residual_n = residual
+        # residual_n[residual==0] = np.nan
+        # residual_n[residual<0] = np.nan
+        # residual_rms = np.sqrt(residual_sumsq/residual_n)
+        # residual_rms_median[i] = np.nanmedian(residual_rms)
+        #calculate median R2 for each point
+        r_squared[i] = 1 - residuals[i] / np.sum((y2 - np.mean(y2))**2)
+    return ts, residuals, r_squared, residual_each_date
 
 
 #@njit(parallel=True)
 def NSBAS_noweights_numba(G, y, tbase, gamma=1e-4, rcond=1e-10):
-    # G    : Design matrix for cumulative offset (-1 at primary and 1 at secondary)
-    # If the design matrix has 1s between primary and secondary, the unknown you are solving for is incremental displacement.
+    # G    : Design matrix for incremental offset (1 between primary and secondary)
     n_ifg, n_pt = y.shape
     n_im = G.shape[1]+1
-    cum_def = np.zeros((n_im, n_pt), dtype=np.float32)*np.nan
-    vel = np.zeros((n_pt), dtype=np.float32)*np.nan
-    vconst = np.zeros((n_pt), dtype=np.float32)*np.nan
-    residuals = np.empty((n_ifg, n_pt), dtype=np.float32)
+    ts = np.zeros((n_im, n_pt), dtype=np.float32)
+    vel = np.zeros((n_pt), dtype=np.float32)
+    vconst = np.zeros((n_pt), dtype=np.float32)
+    residuals = np.empty(n_pt, dtype=np.float32)
     residuals.fill(np.nan)
+    r_squared = np.empty(n_pt, dtype=np.float32)
+    r_squared.fill(np.nan)
+    residual_each_date = np.empty((n_ifg, n_pt), dtype=np.float32)
+    residual_each_date.fill(np.nan)
 
     ### Set matrix of NSBAS part (bottom)
-    #has dimensions of number of unique dates and number of unique dates - 1
     Gbl = np.tril(np.ones((n_im, n_im-1), dtype=np.float32), k=-1) #lower tri matrix without diag
-    # now add time constraints through tbase or dt_cumulative vector
+    # now add time constraints to link unconnected islands through tbase or dt_cumulative vector
     Gbr = -np.ones((n_im, 2), dtype=np.float32)
     Gbr[:, 0] = -tbase
     Gb = np.concatenate((Gbl, Gbr), axis=1)*gamma
@@ -155,20 +171,30 @@ def NSBAS_noweights_numba(G, y, tbase, gamma=1e-4, rcond=1e-10):
             #will use all points
             X, residual, _, _ = np.linalg.lstsq(Gall, y2, rcond=rcond)
             if residual.size > 0:
-                residuals[:,i] = residual
+                residuals[i] = residual
             else:
-                residuals[:,i] = Gall.astype(np.float64).dot(X)
-
+                # residuals[i] = Gall.astype(np.float64).dot(X)
+                residuals[i] = np.linalg.norm(Gall @ X - y2)**2
         else:
             #currently not treating NaN in time series
             # y2 = np.concatenate((y[bool_pt_full, :], np.zeros((n_pt_full, n_im), dtype=np.float32)), axis=1).transpose()
             continue
         X2 = X[:n_im-1, :]
-        X2 = np.insert(X2, 0, 0) # adds zero to first (reference) date
-        cum_def[:, i] = np.cumsum(X2) # stores cumulative deformation
+        # X2 = np.insert(X2, 0, 0) # adds zero to first (reference) date
+        ts[1:, i] = np.cumsum(X2) # stores cumulative deformation
         vel[i] = X[n_im-1, :] # stores velocity slope
         vconst[i] = X[n_im, :] # stores constant velocity factor
-    return cum_def, residuals, vel, vconst
+        residual = Gall @ X - y2
+        residual_each_date[:,i] = residual[:n_ifg,0]
+        # residual_sumsq = np.nansum(residual**2, axis=0)
+        # residual_n = residual
+        # residual_n[residual==0] = np.nan
+        # residual_n[residual<0] = np.nan
+        # residual_rms = np.sqrt(residual_sumsq/residual_n)
+        # residual_rms_median[i] = np.nanmedian(residual_rms)
+        #calculate median R2 for each point
+        r_squared[i] = 1 - residuals[i] / np.sum((y2 - np.mean(y2))**2)
+    return ts, residuals, r_squared, residual_each_date, vel, vconst
 
 
 def read_file(fn, b=1):
@@ -176,6 +202,66 @@ def read_file(fn, b=1):
     data = ds.GetRasterBand(b).ReadAsArray()
     ds = None
     return data
+
+def ts_gaussian_sum_smooth(xdata, ydata, xeval, sigma, null_thresh=0.6):
+    # https://stackoverflow.com/questions/24143320/gaussian-sum-filter-for-irregular-spaced-points
+    """Apply gaussian sum filter to data.
+
+    xdata, ydata : array
+        Arrays of x- and y-coordinates of data.
+        Must be 1d and have the same length.
+
+    xeval : array
+        Array of x-coordinates at which to evaluate the smoothed result
+
+    sigma : float
+        Standard deviation of the Gaussian to apply to each data point
+        Larger values yield a smoother curve.
+
+    null_thresh : float
+        For evaluation points far from data points, the estimate will be
+        based on very little data. If the total weight is below this threshold,
+        return np.nan at this location. Zero means always return an estimate.
+        The default of 0.6 corresponds to approximately one sigma away
+        from the nearest datapoint.
+    """
+    # Distance between every combination of xdata and xeval
+    # each row corresponds to a value in xeval
+    # each col corresponds to a value in xdata
+    delta_x = xeval[:, None] - xdata
+
+    # Calculate weight of every value in delta_x using Gaussian
+    # Maximum weight is 1.0 where delta_x is 0
+    weights = np.exp(-0.5 * ((delta_x / sigma) ** 2))
+
+    # Multiply each weight by every data point, and sum over data points
+    smoothed = np.dot(weights, ydata)
+
+    # Nullify the result when the total weight is below threshold
+    # This happens at evaluation points far from any data
+    # 1-sigma away from a data point has a weight of ~0.6
+    nan_mask = weights.sum(1) < null_thresh
+    smoothed[nan_mask] = np.nan
+
+    # Normalize by dividing by the total weight at each evaluation point
+    # Nullification above avoids divide by zero warning shere
+    smoothed = smoothed / weights.sum(1)
+
+
+    return smoothed
+
+
+def ts_moving_average(data, window_size):
+    window = np.ones(window_size) / window_size
+    datae = np.empty(data.shape[0] + 2*int(np.ceil(window_size/2)))
+    datae.fill(np.nan)
+    #pad data with first and last value to avoid border effecs
+    datae[0:int(np.ceil(window_size/2))] = data[0]
+    datae[int(np.ceil(window_size/2)):int(np.ceil(window_size/2))+data.shape[0]] = data
+    datae[-int(np.ceil(window_size/2)):] = data[-1]
+    smoothed_data = np.convolve(datae, window, mode='same')
+    smoothed_data = smoothed_data[int(np.ceil(window_size/2)):-int(np.ceil(window_size/2))]
+    return smoothed_data
 
 
 def cmdLineParser():
@@ -192,65 +278,62 @@ def cmdLineParser():
 if __name__ == '__main__':
     args = cmdLineParser()
 
-    # # Debugging:
-    # parser = argparse.ArgumentParser(description='')
-    # args = parser.parse_args()
-    # args.area_name = "aoi7"
-    # args.npy_out_path = 'npy'
-    # args.png_out_path = 'npy'
-    # args.deltay_stack_scale = 2.
+    # Debugging:
+    parser = argparse.ArgumentParser(description='')
+    args = parser.parse_args()
+    args.png_out_path = 'png'
+    args.area_name = "aoi7"
+    args.npy_out_path = 'npy'
+    args.png_out_path = 'png'
 
-    files = glob.glob("/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi7/all_scenes/disparity_maps/*L3B_polyfit-F.tif")
-    mask_fn = "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi7/masks/aoi7_region1.npy.gz"
-    bns = [os.path.basename(f) for f in files]
-    dx_stack = np.asarray([read_file(f,1) for f in files])
-    dy_stack = np.asarray([read_file(f,2) for f in files])
-    dates0 = [dt.datetime.strptime(f[0:8], "%Y%m%d") for f in bns]
-    dates1 = [dt.datetime.strptime(f.split("_")[3], "%Y%m%d") if len(f.split("_")[3]) == 8 else dt.datetime.strptime(f.split("_")[4], "%Y%m%d") for f in bns]
+    # files = glob.glob("/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi7/all_scenes/disparity_maps/*L3B_polyfit-F.tif")
+    # mask_fn = "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi7/masks/aoi7_region1.npy.gz"
+    files = glob.glob("/raid/Planet_NWArg/PS2_aoi7/disparity_maps/*L3B_polyfit-F.tif")
+    mask_fname = "/raid/Planet_NWArg/PS2_aoi7/masks/aoi7_region1.npy.gz"
 
-    area_name = os.path.join(args.npy_out_path, args.area_name)
-    deltay_stack_scale = args.deltay_stack_scale
+    # area_name = os.path.join(args.npy_out_path, args.area_name)
+    area_name = args.area_name
 
     if not os.path.exists(args.png_out_path):
         os.mkdir(args.png_out_path)
 
-
-    # mask_fname = 'masks/aoi7_region1.npy.gz'
-    directions_sd_mask_npy_fname = area_name + '_directions_sd_mask.npy.gz'
-    directions_sd_mask_geotiff_fname = area_name + '_directions_sd_mask.tif'
-    date0_stack_fname = area_name + "_date0.npy.gz"
-    date1_stack_fname = area_name + "_date1.npy.gz"
-    deltay_stack_fname = area_name + "_deltay.npy.gz"
-    dx_npy_fname = area_name + "_dx.npy.gz"
-    dy_npy_fname = area_name + "_dy.npy.gz"
-
-    #Load masked file - either as Geotiff or as npy
+    # #Load masked file - either as Geotiff or as npy
     print('Load mask data')
-    if os.path.exists(directions_sd_mask_geotiff_fname):
-        ds = gdal.Open(directions_sd_mask_geotiff_fname)
-        dxdy_size = ds.GetRasterBand(1).ReadAsArray().shape
-        mask = ds.GetRasterBand(1).ReadAsArray()
-        mask[mask == -9999] = np.nan
-        gt = ds.GetGeoTransform()
-        sr = ds.GetProjection()
-        ds = None
-    elif os.path.exists(mask_fname):
+    if os.path.exists(mask_fname):
         f = gzip.GzipFile(mask_fname, "r")
         mask = np.load(f)
         f = None
-    else:
-        print('Could not find file')
+
+    # if os.path.exists(directions_sd_mask_geotiff_fname):
+    #     ds = gdal.Open(directions_sd_mask_geotiff_fname)
+    #     dxdy_size = ds.GetRasterBand(1).ReadAsArray().shape
+    #     mask = ds.GetRasterBand(1).ReadAsArray()
+    #     mask[mask == -9999] = np.nan
+    #     gt = ds.GetGeoTransform()
+    #     sr = ds.GetProjection()
+    #     ds = None
+    # elif os.path.exists(mask_fname):
+    #     f = gzip.GzipFile(mask_fname, "r")
+    #     mask = np.load(f)
+    #     f = None
+    # else:
+    #     print('Could not find file')
 
     ### Load time series data stored in npy files
+    bns = [os.path.basename(f) for f in files]
+    dates0 = [dt.datetime.strptime(f[0:8], "%Y%m%d") for f in bns]
+    dates1 = [dt.datetime.strptime(f.split("_")[3], "%Y%m%d") if len(f.split("_")[3]) == 8 else dt.datetime.strptime(f.split("_")[4], "%Y%m%d") for f in bns]
     print('Load dx data')
-    f = gzip.GzipFile(dx_npy_fname, "r")
-    dx_stack = np.load(f)
-    f = None
+    # f = gzip.GzipFile(dx_npy_fname, "r")
+    # dx_stack = np.load(f)
+    # f = None
+    dx_stack = np.asarray([read_file(f,1) for f in files])
 
     print('Load dy data')
-    f = gzip.GzipFile(dy_npy_fname, "r")
-    dy_stack = np.load(f)
-    f = None
+    # f = gzip.GzipFile(dy_npy_fname, "r")
+    # dy_stack = np.load(f)
+    # f = None
+    dy_stack = np.asarray([read_file(f,2) for f in files])
 
     # Extract values only for masked areas
     print('Extract relevant values and remove full array from memory')
@@ -263,16 +346,14 @@ if __name__ == '__main__':
     dy_stack_masked.fill(np.nan)
 
     # Could also do this via numba, but looks fast enough right now
-    for i in tqdm.tqdm(range(dx_stack.shape[0])):
+    for i in range(dx_stack.shape[0]):
         dx_stack_masked[i,:] = dx_stack[i, :, :].ravel()[idxxy]
         dy_stack_masked[i,:] = dy_stack[i, :, :].ravel()[idxxy]
-
 
     del dx_stack, dy_stack
 
     dates0 = np.asarray(dates0)
     dates1 = np.asarray(dates1)
-
     ddates = dates1 - dates0
     ddates_day = np.array([i.days for i in ddates])
 
@@ -291,66 +372,159 @@ if __name__ == '__main__':
     # SBAS - no weights
     print('\nRun linear SBAS inversion on each pixel with no weights')
     print('\t dx')
-    dx_ts_SBAS_noweights_numba, dx_residuals_SBAS_noweights_numba = SBAS_noweights_numba(A, dx_stack_masked, tbase_diff, nre, rcond=1e-10)
+    dx_ts_SBAS_noweights, dx_residuals_SBAS_noweights, dx_r2_SBAS_noweights, dx_residualdates_SBAS_noweights = SBAS_noweights_numba(A, dx_stack_masked, tbase_diff[:,0], rcond=1e-10)
     print('\t dy')
-    dy_ts_SBAS_noweights_numba, dy_residuals_SBAS_noweights_numba= SBAS_noweights_numba(A, dy_stack_masked, tbase_diff, nre, rcond=1e-10)
+    dy_ts_SBAS_noweights, dy_residuals_SBAS_noweights, dy_r2_SBAS_noweights, dy_residualdates_SBAS_noweights = SBAS_noweights_numba(A, dy_stack_masked, tbase_diff[:,0], rcond=1e-10)
+    # useful plot: length of correlation duration vs. rsquared
+    # next step is to apply smoothing filter to time series
+    # for a Gaussian filter, the time steps should be regular. You will first need to do a linear interpolation and then apply Gaussian filtering.
+    print('\tSBAS: Median of all r2 from dx: %2.2f'%np.nanmedian(dx_r2_SBAS_noweights))
+    print('\tSBAS: Median of all r2 from dy: %2.2f'%np.nanmedian(dy_r2_SBAS_noweights))
+    print('\tSBAS: Median of all residuals from dx: %2.2f'%np.nanmedian(dx_residuals_SBAS_noweights))
+    print('\tSBAS: Median of all residuals from dy: %2.2f'%np.nanmedian(dy_residuals_SBAS_noweights))
+    # print('Median of all rms from dx: %2.2f'%np.nanmedian(dx_rms_SBAS_noweights))
+    # print('Median of all rms from dy: %2.2f'%np.nanmedian(dy_rms_SBAS_noweights))
+
+    ### Smooth time series
+    # use simple moving average approach (will work with irregular data)
+    window_size = 5
+    dx_ts_SBAS_noweights_mv = np.empty_like(dx_ts_SBAS_noweights)
+    dx_ts_SBAS_noweights_mv.fill(np.nan)
+    for i in range(dx_ts_SBAS_noweights.shape[1]):
+        dx_ts_SBAS_noweights_mv[:,i] = ts_moving_average(dx_ts_SBAS_noweights[:,i], window_size)
+
+    dy_ts_SBAS_noweights_mv = np.empty_like(dy_ts_SBAS_noweights)
+    dy_ts_SBAS_noweights_mv.fill(np.nan)
+    for i in range(dy_ts_SBAS_noweights.shape[1]):
+        dy_ts_SBAS_noweights_mv[:,i] = ts_moving_average(dy_ts_SBAS_noweights[:,i], window_size)
+
+    xeval = np.arange(np.min(np.cumsum(tbase_diff2)), np.ceil(np.max(np.cumsum(tbase_diff2))), 1/12) #create monthly spacing
+    sigma = (1/12) * 3 # 3 months sigma
+    dx_ts_SBAS_noweights_gss = np.empty((xeval.shape[0], dx_ts_SBAS_noweights.shape[1]))
+    dx_ts_SBAS_noweights_gss.fill(np.nan)
+    for i in range(dx_ts_SBAS_noweights.shape[1]):
+        dx_ts_SBAS_noweights_gss[:,i] = ts_gaussian_sum_smooth(np.cumsum(tbase_diff2), dx_ts_SBAS_noweights[:,i], xeval, sigma, null_thresh=0.6)
+
+    dy_ts_SBAS_noweights_gss = np.empty((xeval.shape[0], dy_ts_SBAS_noweights.shape[1]))
+    dy_ts_SBAS_noweights_gss.fill(np.nan)
+    for i in range(dy_ts_SBAS_noweights.shape[1]):
+        dy_ts_SBAS_noweights_gss[:,i] = ts_gaussian_sum_smooth(np.cumsum(tbase_diff2), dy_ts_SBAS_noweights[:,i], xeval, sigma, null_thresh=0.6)
 
     # NSBAS - no weights
     print('\nRun linear NSBAS inversion on each pixel with no weights')
     print('\t dx')
-    dx_ts_NSBAS_noweights_numba, dx_residuals_NSBAS_noweights_numba, dx_ts_NSBAS_noweights_vel, dx_ts_NSBAS_noweights_vconst = NSBAS_noweights_numba(A, dx_stack_masked, tbase, rcond=1e-10)
+    dx_ts_NSBAS_noweights, dx_residuals_NSBAS_noweights, dx_r2_NSBAS_noweights, dx_residualdates_NSBAS_noweights, dx_ts_NSBAS_noweights_vel, dx_ts_NSBAS_noweights_vconst = NSBAS_noweights_numba(A, dx_stack_masked, tbase, rcond=1e-10)
     print('\t dy')
-    dy_ts_NSBAS_noweights_numba, dy_residuals_NSBAS_noweights_numba, dy_ts_NSBAS_noweights_vel, dy_ts_NSBAS_noweights_vconst = NSBAS_noweights_numba(A, dy_stack_masked, tbase, rcond=1e-10)
-
-    fig, ax = plt.subplots(1, 2, figsize=(12,5))
-    ax[0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_NSBAS_noweights_numba, axis=1), '-', color='darkblue', label='NSBAS')
-    ax[0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_SBAS_noweights_numba, axis=1), '-', color='firebrick', label='SBAS')
-    ax[0].set_title('Mean dx offset (n=%d)'%nre, fontsize=14)
-    ax[0].set_xlabel('Time [y]')
-    ax[0].set_ylabel('Cumulative dx offset [pix]')
-    ax[0].legend()
-    ax[0].grid()
-    ax[1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_NSBAS_noweights_numba, axis=1), '-', color='darkblue', label='NSBAS')
-    ax[1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_SBAS_noweights_numba, axis=1), '-', color='firebrick', label='SBAS')
-    ax[1].set_title('Mean dy offset (n=%d)'%nre, fontsize=14)
-    ax[1].set_xlabel('Time [y]')
-    ax[1].set_ylabel('Cumulative dy offset [pix]')
-    ax[1].legend()
-    ax[1].grid()
-    fig.tight_layout()
-    fig.savefig(os.path.join(png_out_path, '%s_dx_dy_SBAS_NSBAS_inversion.png'%area_name), dpi=300)
+    dy_ts_NSBAS_noweights, dy_residuals_NSBAS_noweights, dy_r2_NSBAS_noweights, dy_residualdates_NSBAS_noweights, dy_ts_NSBAS_noweights_vel, dy_ts_NSBAS_noweights_vconst = NSBAS_noweights_numba(A, dy_stack_masked, tbase, rcond=1e-10)
+    print('\tNSBAS: Median of all r2 from dx: %2.2f'%np.nanmedian(dx_r2_NSBAS_noweights))
+    print('\tNSBAS: Median of all r2 from dy: %2.2f'%np.nanmedian(dy_r2_NSBAS_noweights))
+    print('\tNSBAS: Median of all residuals from dx: %2.2f'%np.nanmedian(dx_residuals_NSBAS_noweights))
+    print('\tNSBAS: Median of all residuals from dy: %2.2f'%np.nanmedian(dy_residuals_NSBAS_noweights))
 
     fig, ax = plt.subplots(2, 2, figsize=(12,5))
-    ax[0,0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_NSBAS_noweights_numba, axis=1), '-', color='darkblue', label='NSBAS')
-    ax[0,0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_SBAS_noweights_numba, axis=1), '-', color='firebrick', label='SBAS')
-    ax[0,0].set_title('Mean dx offset (n=%d)'%nre, fontsize=14)
+    ax[0,0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_NSBAS_noweights, axis=1), '-', color='darkblue', label='NSBAS')
+    ax[0,0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_SBAS_noweights, axis=1), '-', color='firebrick', label='SBAS')
+    ax[0,0].set_title('Unsmoothed mean dx offset (n=%d)'%nre, fontsize=14)
     ax[0,0].set_xlabel('Time [y]')
     ax[0,0].set_ylabel('Cumulative dx offset [pix]')
     ax[0,0].legend()
     ax[0,0].grid()
-    ax[0,1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_NSBAS_noweights_numba, axis=1), '-', color='darkblue', label='NSBAS')
-    ax[0,1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_SBAS_noweights_numba, axis=1), '-', color='firebrick', label='SBAS')
-    ax[0,1].set_title('Mean dy offset (n=%d)'%nre, fontsize=14)
+    ax[0,1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_NSBAS_noweights, axis=1), '-', color='darkblue', label='NSBAS')
+    ax[0,1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_SBAS_noweights, axis=1), '-', color='firebrick', label='SBAS')
+    ax[0,1].set_title('Unsmoothed mean dy offset (n=%d)'%nre, fontsize=14)
     ax[0,1].set_xlabel('Time [y]')
     ax[0,1].set_ylabel('Cumulative dy offset [pix]')
     ax[0,1].legend()
     ax[0,1].grid()
-    ax[1,0].plot(dates0, np.nanmean(dx_residuals_NSBAS_noweights_numba, axis=1), 'o', color='darkblue', label='NSBAS')
-    ax[1,0].plot(dates0, np.nanmean(dx_residuals_SBAS_noweights_numba, axis=1), '+', color='firebrick', label='SBAS')
-    ax[1,0].set_title('dx residuals (n=%d)'%nre, fontsize=14)
-    ax[1,0].set_xlabel('Starting date of correlation pair')
-    ax[1,0].set_ylabel('Mean Residual [pix]')
+    ax[1,0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_NSBAS_noweights, axis=1), '-', lw=0.5, color='darkblue', label='NSBAS')
+    ax[1,0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_SBAS_noweights, axis=1), '-', lw=0.5, color='firebrick', label='SBAS')
+    ax[1,0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_SBAS_noweights_mv, axis=1), '-', lw=1, color='firebrick', label='SBAS moving average')
+    ax[1,0].plot(xeval, np.nanmean(dx_ts_SBAS_noweights_gss, axis=1), '-o', ms=2, lw=1, color='firebrick', label='SBAS gaussian smoothing')
+    ax[1,0].set_title('Smoothed Mean dx offset (n=%d)'%nre, fontsize=14)
+    ax[1,0].set_xlabel('Time [y]')
+    ax[1,0].set_ylabel('Cumulative dx offset [pix]')
     ax[1,0].legend()
     ax[1,0].grid()
-    ax[1,1].plot(dates0, np.nanmean(dy_residuals_NSBAS_noweights_numba, axis=1), 'o', color='darkblue', label='NSBAS')
-    ax[1,1].plot(dates0, np.nanmean(dy_residuals_SBAS_noweights_numba, axis=1), '+', color='firebrick', label='SBAS')
-    ax[1,1].set_title('dy residuals (n=%d)'%nre, fontsize=14)
-    ax[1,1].set_xlabel('Starting date of correlation pair')
-    ax[1,1].set_ylabel('Mean Residual [pix]')
+    ax[1,1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_NSBAS_noweights, axis=1), '-', lw=0.5, color='darkblue', label='NSBAS')
+    ax[1,1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_SBAS_noweights, axis=1), '-', lw=0.5, color='firebrick', label='SBAS')
+    ax[1,1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_SBAS_noweights_mv, axis=1), '-', lw=1, color='firebrick', label='SBAS moving average')
+    ax[1,1].plot(xeval, np.nanmean(dy_ts_SBAS_noweights_gss, axis=1), '-o', ms=2, lw=1, color='firebrick', label='SBAS gaussian smoothing')
+    ax[1,1].set_title('Smoothed Mean dy offset (n=%d)'%nre, fontsize=14)
+    ax[1,1].set_xlabel('Time [y]')
+    ax[1,1].set_ylabel('Cumulative dy offset [pix]')
     ax[1,1].legend()
     ax[1,1].grid()
     fig.tight_layout()
-    fig.savefig(os.path.join(png_out_path, '%s_dx_dy_SBAS_NSBAS_residuals_inversion.png'%area_name), dpi=300)
+    fig.savefig(os.path.join(args.png_out_path, '%s_dx_dy_SBAS_NSBAS_inversion.png'%area_name), dpi=300)
+
+    ## plot residuals
+    fig, ax = plt.subplots(2, 2, figsize=(12,8))
+    ax[0,0].plot(np.cumsum(tbase_diff2), np.nanmedian(dx_ts_NSBAS_noweights, axis=1), '-', color='darkblue', label='NSBAS')
+    ax[0,0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_SBAS_noweights, axis=1), '-', color='firebrick', label='SBAS')
+    ax[0,0].set_title('Median dx offset (n=%d)'%nre, fontsize=14)
+    ax[0,0].set_xlabel('Time [y]')
+    ax[0,0].set_ylabel('Cumulative dx offset [pix]')
+    ax[0,0].legend()
+    ax[0,0].grid()
+    ax[0,1].plot(np.cumsum(tbase_diff2), np.nanmedian(dy_ts_NSBAS_noweights, axis=1), '-', color='darkblue', label='NSBAS')
+    ax[0,1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_SBAS_noweights, axis=1), '-', color='firebrick', label='SBAS')
+    ax[0,1].set_title('Median dy offset (n=%d)'%nre, fontsize=14)
+    ax[0,1].set_xlabel('Time [y]')
+    ax[0,1].set_ylabel('Cumulative dy offset [pix]')
+    ax[0,1].legend()
+    ax[0,1].grid()
+    ax[1,0].plot(dates0, np.nanmedian(dx_residualdates_NSBAS_noweights, axis=1), 'o', color='darkblue', label='NSBAS')
+    ax[1,0].plot(dates0, np.nanmedian(dy_residualdates_SBAS_noweights, axis=1), '+', color='firebrick', label='SBAS')
+    ax[1,0].set_title('dx residuals (n=%d)'%nre, fontsize=14)
+    ax[1,0].set_xlabel('Starting date of correlation pair')
+    ax[1,0].set_ylabel('Median Residual [pix]')
+    ax[1,0].legend()
+    ax[1,0].grid()
+    ax[1,1].plot(dates0, np.nanmedian(dx_residualdates_NSBAS_noweights, axis=1), 'o', color='darkblue', label='NSBAS')
+    ax[1,1].plot(dates0, np.nanmedian(dy_residualdates_SBAS_noweights, axis=1), '+', color='firebrick', label='SBAS')
+    ax[1,1].set_title('dy residuals (n=%d)'%nre, fontsize=14)
+    ax[1,1].set_xlabel('Starting date of correlation pair')
+    ax[1,1].set_ylabel('Median Residual [pix]')
+    ax[1,1].legend()
+    ax[1,1].grid()
+    fig.tight_layout()
+    fig.savefig(os.path.join(args.png_out_path, '%s_dx_dy_SBAS_NSBAS_residuals_inversion.png'%area_name), dpi=300)
+
+    ## Create map view of r2 from residual estimation for every pixel
+    # take r2 values for all masked pixels and turn into map view
+    dx_r2_SBAS_noweights_map = np.zeros_like(mask, dtype=np.float32)
+    dx_r2_SBAS_noweights_map.fill(np.nan)
+    dx_r2_SBAS_noweights_map.ravel()[idxxy] = dx_r2_SBAS_noweights
+
+    dy_r2_SBAS_noweights_map = np.zeros_like(mask, dtype=np.float32)
+    dy_r2_SBAS_noweights_map.fill(np.nan)
+    dy_r2_SBAS_noweights_map.ravel()[idxxy] = dy_r2_SBAS_noweights
+
+    dx_r2_NSBAS_noweights_map = np.zeros_like(mask, dtype=np.float32)
+    dx_r2_NSBAS_noweights_map.fill(np.nan)
+    dx_r2_NSBAS_noweights_map.ravel()[idxxy] = dx_r2_NSBAS_noweights
+
+    dy_r2_NSBAS_noweights_map = np.zeros_like(mask, dtype=np.float32)
+    dy_r2_NSBAS_noweights_map.fill(np.nan)
+    dy_r2_NSBAS_noweights_map.ravel()[idxxy] = dy_r2_NSBAS_noweights
+
+    fig, ax = plt.subplots(2, 2, figsize=(12,8))
+    vmin = 0.7
+    vmax = 1
+    im0 = ax[0,0].imshow(dx_r2_SBAS_noweights_map, cmap='viridis', vmin=vmin, vmax=vmax)
+    ax[0,0].set_title('R2 of SBAS dx', fontsize=14)
+    im1 = ax[0,1].imshow(dy_r2_SBAS_noweights_map, cmap='viridis', vmin=vmin, vmax=vmax)
+    ax[0,1].set_title('R2 of SBAS dy', fontsize=14)
+    im2 = ax[1,0].imshow(dx_r2_NSBAS_noweights_map, cmap='viridis', vmin=vmin, vmax=vmax)
+    ax[1,0].set_title('R2 of NSBAS dx', fontsize=14)
+    im3 = ax[1,1].imshow(dy_r2_NSBAS_noweights_map, cmap='viridis', vmin=vmin, vmax=vmax)
+    ax[1,1].set_title('R2 of NSBAS dy', fontsize=14)
+    # fig.colorbar(im0, ax=ax.ravel().tolist())
+    fig.subplots_adjust(right=0.8)
+    cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+    fig.colorbar(im0, cax=cbar_ax)
+    # fig.tight_layout()
+    fig.savefig(os.path.join(args.png_out_path, '%s_dx_dy_SBAS_NSBAS_r2_mapview.png'%area_name), dpi=300)
 
     # # Export inverted ts to npy files
     # if os.path.exists(dx_ts_tweights_numba_fn) is False:
