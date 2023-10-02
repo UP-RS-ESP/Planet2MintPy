@@ -352,7 +352,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='')
     args = parser.parse_args()
     args.png_out_path = 'png'
-    args.area_name = "aoi6"
+    args.area_name = "aoi4"
     args.npy_out_path = 'npy'
     args.png_out_path = 'png'
 
@@ -415,7 +415,7 @@ if __name__ == '__main__':
     
     print('Creating mask data')
     # masks = get_landslide_loc(dx_stack, dy_stack, ddates, pad = 20, where = "highest_vel", threshold_size = 5000)   
-    masks = get_landslide_loc(dx_stack, dy_stack, ddates, pad = 20, where = "all", threshold_size = 1000, threshold_angle = 20)   
+    masks = get_landslide_loc(dx_stack, dy_stack, ddates, pad = 20, where = "all", threshold_size = 5000, threshold_angle = 30)   
 
     
     for idx in range(masks.shape[0]):
