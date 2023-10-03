@@ -584,7 +584,7 @@ if __name__ == '__main__':
 
         fig, ax = plt.subplots(2, 1, figsize=(12,5))
         im0 = ax[0].scatter(dates0_unique, np.nanmedian(dx_residualdates_SSE_median_NSBAS_noweights, axis=1), s=10, c=dx_dy_residual_NSBAS_nrdates, marker='o', linestyle='-', label='NSBAS')
-        ax[0].plot(dates0_unique, np.nanmedian(dx_residualdates_SSE_median_SBAS_noweights, axis=1), s=10, c=dx_dy_residual_SBAS_nrdates, marker='s', linestyle='-', label='SBAS')
+        im1 = ax[0].scatter(dates0_unique, np.nanmedian(dx_residualdates_SSE_median_SBAS_noweights, axis=1), s=10, c=dx_dy_residual_SBAS_nrdates, marker='s', linestyle='-', label='SBAS')
         ax[0].set_title('Median of all pixels: Sum of squared residuals (n=%d) for %d dates'%(nre, len(dates0_unique)), fontsize=14)
         ax[0].set_xlabel('Date')
         ax[0].set_ylabel('Median of sum of squared residuals dx [pix]')
