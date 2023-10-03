@@ -469,18 +469,30 @@ if __name__ == '__main__':
         # print('Median of all rms from dx: %2.2f'%np.nanmedian(dx_rms_SBAS_noweights))
         # print('Median of all rms from dy: %2.2f'%np.nanmedian(dy_rms_SBAS_noweights))
 
-        # Extract sum of squared residuals for each date
+        # Extract median and sum of squared residuals for each date
         dates0_unique = np.unique(dates0)
         dates1_unique = np.unique(dates1)
         dx_residualdates_SSE_SBAS_noweights = np.empty((len(dates0_unique), dx_residualdates_SBAS_noweights.shape[1]), dtype=np.float32)
         dx_residualdates_SSE_SBAS_noweights.fill(np.nan)
         dy_residualdates_SSE_SBAS_noweights = np.empty((len(dates0_unique), dx_residualdates_SBAS_noweights.shape[1]), dtype=np.float32)
         dy_residualdates_SSE_SBAS_noweights.fill(np.nan)
+        dx_residualdates_SSE_median_SBAS_noweights = np.empty((len(dates0_unique), dx_residualdates_SBAS_noweights.shape[1]), dtype=np.float32)
+        dx_residualdates_SSE_median_SBAS_noweights.fill(np.nan)
+        dy_residualdates_SSE_median_SBAS_noweights = np.empty((len(dates0_unique), dx_residualdates_SBAS_noweights.shape[1]), dtype=np.float32)
+        dy_residualdates_SSE_median_SBAS_noweights.fill(np.nan)
+        #currently only storing number of ifg with one value for all pixels
+        dx_dy_residual_SBAS_nrdates = np.empty((len(dates0_unique)), dtype=np.float32)
+        dx_dy_residual_SBAS_nrdates.fill(np.nan)
+
         for i in range(len(dates0_unique)):
             #find corresponding pairs for each date in date0
             idx, = np.where(dates0_unique[i] == dates0)
             dx_residualdates_SSE_SBAS_noweights[i, :] = np.nansum(dx_residualdates_SBAS_noweights[idx,:]**2, axis=0)
             dy_residualdates_SSE_SBAS_noweights[i, :] = np.nansum(dy_residualdates_SBAS_noweights[idx,:]**2, axis=0)
+            dx_residualdates_SSE_median_SBAS_noweights[i, :] = np.nanmedian(dx_residualdates_SBAS_noweights[idx,:]**2, axis=0)
+            dy_residualdates_SSE_median_SBAS_noweights[i, :] = np.nanmedian(dy_residualdates_SBAS_noweights[idx,:]**2, axis=0)
+            dx_dy_residual_SBAS_nrdates[i] = len(dx_residualdates_SBAS_noweights[idx,:])
+
 
         ### Smooth time series
         # use simple moving average approach (will work with irregular data)
@@ -551,23 +563,36 @@ if __name__ == '__main__':
         dx_residualdates_SSE_NSBAS_noweights.fill(np.nan)
         dy_residualdates_SSE_NSBAS_noweights = np.empty((len(dates0_unique), dx_residualdates_NSBAS_noweights.shape[1]), dtype=np.float32)
         dy_residualdates_SSE_NSBAS_noweights.fill(np.nan)
+        dx_residualdates_SSE_median_NSBAS_noweights = np.empty((len(dates0_unique), dx_residualdates_NSBAS_noweights.shape[1]), dtype=np.float32)
+        dx_residualdates_SSE_median_NSBAS_noweights.fill(np.nan)
+        dy_residualdates_SSE_median_NSBAS_noweights = np.empty((len(dates0_unique), dx_residualdates_NSBAS_noweights.shape[1]), dtype=np.float32)
+        dy_residualdates_SSE_median_NSBAS_noweights.fill(np.nan)
+        #currently only storing number of ifg with one value for all pixels
+        dx_dy_residual_NSBAS_nrdates = np.empty((len(dates0_unique)), dtype=np.float32)
+        dx_dy_residual_NSBAS_nrdates.fill(np.nan)
+
         for i in range(len(dates0_unique)):
             #find corresponding pairs for each date in date0
             idx, = np.where(dates0_unique[i] == dates0)
             dx_residualdates_SSE_NSBAS_noweights[i, :] = np.nansum(dx_residualdates_NSBAS_noweights[idx,:]**2, axis=0)
             dy_residualdates_SSE_NSBAS_noweights[i, :] = np.nansum(dy_residualdates_NSBAS_noweights[idx,:]**2, axis=0)
+            #need to check for values that are all NaN
+            #if np.all(np.isnan(dx_residualdates_NSBAS_noweights[idx,:]))
+            dx_residualdates_SSE_median_NSBAS_noweights[i, :] = np.nanmedian(dx_residualdates_NSBAS_noweights[idx,:]**2, axis=0)
+            dy_residualdates_SSE_median_NSBAS_noweights[i, :] = np.nanmedian(dy_residualdates_NSBAS_noweights[idx,:]**2, axis=0)
+            dx_dy_residual_NSBAS_nrdates[i] = len(dx_residualdates_NSBAS_noweights[idx,:])
 
         fig, ax = plt.subplots(2, 1, figsize=(12,5))
-        ax[0].plot(dates0_unique, np.nanmedian(dx_residualdates_SSE_NSBAS_noweights, axis=1), '-', color='darkblue', label='NSBAS')
-        ax[0].plot(dates0_unique, np.nanmedian(dx_residualdates_SSE_SBAS_noweights, axis=1), '-', color='firebrick', label='SBAS')
+        im0 = ax[0].scatter(dates0_unique, np.nanmedian(dx_residualdates_SSE_median_NSBAS_noweights, axis=1), s=10, c=dx_dy_residual_NSBAS_nrdates, marker='o', linestyle='-', label='NSBAS')
+        ax[0].plot(dates0_unique, np.nanmedian(dx_residualdates_SSE_median_SBAS_noweights, axis=1), s=10, c=dx_dy_residual_SBAS_nrdates, marker='s', linestyle='-', label='SBAS')
         ax[0].set_title('Median of all pixels: Sum of squared residuals (n=%d) for %d dates'%(nre, len(dates0_unique)), fontsize=14)
         ax[0].set_xlabel('Date')
         ax[0].set_ylabel('Median of sum of squared residuals dx [pix]')
         ax[0].set_yscale('log')
         ax[0].legend()
         ax[0].grid()
-        ax[1].plot(dates0_unique, np.nanmedian(dy_residualdates_SSE_NSBAS_noweights, axis=1), '-', color='darkblue', label='NSBAS')
-        ax[1].plot(dates0_unique, np.nanmedian(dy_residualdates_SSE_SBAS_noweights, axis=1), '-', color='firebrick', label='SBAS')
+        ax[1].plot(dates0_unique, np.nanmedian(dy_residualdates_SSE_median_NSBAS_noweights, axis=1), '-', color='darkblue', label='NSBAS')
+        ax[1].plot(dates0_unique, np.nanmedian(dy_residualdates_SSE_median_SBAS_noweights, axis=1), '-', color='firebrick', label='SBAS')
         ax[1].set_title('Median of all pixels: Sum of squared residuals (n=%d) for %d dates'%(nre, len(dates0_unique)), fontsize=14)
         ax[1].set_xlabel('Date')
         ax[1].set_ylabel('Median of sum of squared residuals dy [pix]')
