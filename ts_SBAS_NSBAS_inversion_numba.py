@@ -19,10 +19,9 @@ import matplotlib.pyplot as plt
 from skimage import measure
 from skimage.morphology import closing, disk
 from osgeo import gdal
-
+import pandas as pd
 from numba import njit, prange
 from numba_progress import ProgressBar
-
 from scipy.signal import savgol_filter
 
 DESCRIPTION = """
@@ -74,7 +73,7 @@ def create_design_matrix_incremental_displacement(num_ifgram, dates0, dates1):
     unique_dates = np.union1d(np.unique(dates0), np.unique(dates1))
     num_date = len(unique_dates)
 
-    tbase = [i.days + i.seconds / (24 * 60 * 60) for i in (unique_dates - unique_dates[0])]
+    tbase = [i.days + i.seconds / (24 * 60 * 60) for i in (unique_dates - unique_dates[0])] #AM: why do you need to add seconds here? that will always be 0
     tbase = np.array(tbase, dtype=np.float32) / 365.25
 
     date12_list = []
@@ -333,8 +332,8 @@ def get_landslide_loc(dx_stack, dy_stack, ddates, threshold_angle = 45, threshol
     masks_sum = np.sum(masks, axis = 0)
     masks_sum[masks_sum == 0] = np.nan
     plt.imshow(masks_sum, alpha = 0.6, cmap = "Blues_r")
+    
     return masks
-
 
 def cmdLineParser():
     from argparse import RawTextHelpFormatter
@@ -354,15 +353,16 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='')
     args = parser.parse_args()
     args.png_out_path = 'png'
-    args.area_name = "aoi7"
+    args.area_name = "aoi9"
     args.npy_out_path = 'npy'
     args.png_out_path = 'png'
 
-    # files = glob.glob("/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi5/all_scenes/disparity_maps/*L3B_polyfit-F.tif")
-    # print(len(files))
-    # mask_fname = "/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/aoi5/masks/aoi5_region1.npy.gz"
+    #files = glob.glob(f"/raid-manaslu/amueting/PhD/Project3/PlanetScope_Data/{args.area_name}/all_scenes/disparity_maps/*L3B_polyfit-F.tif")
+        
     files = glob.glob(f"/home/ariane/Documents/Project3/PlanetScope_Data/{args.area_name}/all_scenes/disparity_maps/*L3B_polyfit-F.tif")
     print(f"Found {len(files)} correlation pairs")
+    #dem is just for plotting
+    demname = f"/home/ariane/Documents/Project3/DEM_Data/CopernicusDEM_clip_{args.area_name}.tif"
     #mask_fname = "/home/ariane/Documents/Project3/PlanetScope_Data/aoi5/masks/aoi5_region1.npy.gz"
 
     # files = glob.glob("/raid/Planet_NWArg/PS2_aoi7/disparity_maps/*L3B_polyfit-F.tif")
@@ -418,8 +418,16 @@ if __name__ == '__main__':
 
     print('Creating mask data')
     # masks = get_landslide_loc(dx_stack, dy_stack, ddates, pad = 20, where = "highest_vel", threshold_size = 5000)   
-    masks = get_landslide_loc(dx_stack, dy_stack, ddates, pad = 20, where = "all", threshold_size = 5000, threshold_angle = 30)   
+    masks = get_landslide_loc(dx_stack, dy_stack, ddates, pad = 20, where = "all", threshold_size = 5000, threshold_angle = 45)   
+    
+    #get mean vel (just for plotting)
+    res = 3
+    v = np.zeros(dx_stack.shape)
+    for i in range(len(ddates)):
+        v[i,:,:] = (np.sqrt((dx_stack[i]**2+dy_stack[i]**2))*res)/ddates[i].days*365
 
+    v = cc.nanmean_numba(v)
+    
     for idx in range(masks.shape[0]):
         mask = masks[idx,:,:]
         # Extract values only for masked areas
@@ -572,39 +580,7 @@ if __name__ == '__main__':
         fig.savefig(os.path.join(args.png_out_path, f'{args.area_name}_dx_dy_SBAS_NSBAS_inversion_region{idx}.png'), dpi=300)
         # fig.savefig(os.path.join(args.png_out_path, f'{args.area_name}_dx_dy_SBAS_NSBAS_inversion_comparison.png'), dpi=300)
 
-        ## plot residuals
-        fig, ax = plt.subplots(2, 2, figsize=(12,8))
-        ax[0,0].plot(np.cumsum(tbase_diff2), np.nanmedian(dx_ts_NSBAS_noweights, axis=1), '-', color='darkblue', label='NSBAS')
-        ax[0,0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_SBAS_noweights, axis=1), '-', color='firebrick', label='SBAS')
-        ax[0,0].set_title('Median dx offset (n=%d)'%nre, fontsize=14)
-        ax[0,0].set_xlabel('Time [y]')
-        ax[0,0].set_ylabel('Cumulative dx offset [pix]')
-        ax[0,0].legend()
-        ax[0,0].grid()
-        ax[0,1].plot(np.cumsum(tbase_diff2), np.nanmedian(dy_ts_NSBAS_noweights, axis=1), '-', color='darkblue', label='NSBAS')
-        ax[0,1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_SBAS_noweights, axis=1), '-', color='firebrick', label='SBAS')
-        ax[0,1].set_title('Median dy offset (n=%d)'%nre, fontsize=14)
-        ax[0,1].set_xlabel('Time [y]')
-        ax[0,1].set_ylabel('Cumulative dy offset [pix]')
-        ax[0,1].legend()
-        ax[0,1].grid()
-        ax[1,0].plot(dates0, np.nanmedian(dx_residualdates_NSBAS_noweights, axis=1), 'o', color='darkblue', label='NSBAS')
-        ax[1,0].plot(dates0, np.nanmedian(dy_residualdates_SBAS_noweights, axis=1), '+', color='firebrick', label='SBAS')
-        ax[1,0].set_title('dx residuals (n=%d)'%nre, fontsize=14)
-        ax[1,0].set_xlabel('Starting date of correlation pair')
-        ax[1,0].set_ylabel('Median Residual [pix]')
-        ax[1,0].legend()
-        ax[1,0].grid()
-        ax[1,1].plot(dates0, np.nanmedian(dx_residualdates_NSBAS_noweights, axis=1), 'o', color='darkblue', label='NSBAS')
-        ax[1,1].plot(dates0, np.nanmedian(dy_residualdates_SBAS_noweights, axis=1), '+', color='firebrick', label='SBAS')
-        ax[1,1].set_title('dy residuals (n=%d)'%nre, fontsize=14)
-        ax[1,1].set_xlabel('Starting date of correlation pair')
-        ax[1,1].set_ylabel('Median Residual [pix]')
-        ax[1,1].legend()
-        ax[1,1].grid()
-        fig.tight_layout()
-        fig.savefig(os.path.join(args.png_out_path, f'{args.area_name}_dx_dy_SBAS_NSBAS_residuals_inversion_region{idx}.png'), dpi=300)
-
+     
         ## Create map view of r2 from residual estimation for every pixel
         # take r2 values for all masked pixels and turn into map view
         dx_r2_SBAS_noweights_map = np.zeros_like(mask, dtype=np.float32)
@@ -678,3 +654,42 @@ if __name__ == '__main__':
         #     np.save(file=f, arr=dy_ts_rweights2_numba)
         #     f.close()
         #     f = None
+        
+        
+        #map plotting
+        
+        cmd = f"gdaldem hillshade {demname} {demname[:-4]}_HS.tif"
+        os.system(cmd)
+        
+        hs = read_file(f"{demname[:-4]}_HS.tif")
+        vplot = v.copy()
+        vplot[mask == 0] = np.nan
+        unique_dates = np.union1d(np.unique(dates0), np.unique(dates1))
+        xeval_dates = [min(unique_dates) + dt.timedelta(days = x*365.25) for x in xeval]
+        
+        fig, ax = plt.subplots(1,3, figsize = (18,5))     
+        ax[0].imshow(hs, cmap = "Greys_r")
+        p = ax[0].imshow(vplot, cmap = "Reds", vmin = 0, vmax = 10, alpha = 0.8)
+        plt.colorbar(p, ax = ax[0], label = "Velocity [m/yr]")
+        ax[1].axhline(c = "gray", ls = "--")
+        ax[1].plot(unique_dates, np.nanmean(dx_ts_SBAS_noweights, axis=1)*res, '-', lw=1, color='firebrick', label='SBAS')
+        ax[1].plot(xeval_dates, np.nanmean(dx_ts_SBAS_noweights_sg, axis=1)*res, '-x', ms=2, lw=1, color='indigo', label='SBAS Savitzky-Golay')
+        ax[1].grid()
+        ax[1].set_ylim(-5,25)
+        ax[1].set_ylabel("EW Displacement [m]")
+        ax[1].set_xlabel("Time")
+        ax[1].legend()
+        ax[2].axhline(c = "gray", ls = "--")
+        ax[2].plot(unique_dates, np.nanmean(dy_ts_SBAS_noweights, axis=1)*res, '-', lw=1, color='firebrick', label='SBAS')
+        ax[2].plot(xeval_dates, np.nanmean(dy_ts_SBAS_noweights_sg, axis=1)*res, '-x', ms=2, lw=1.2, color='indigo', label='SBAS Savitzky-Golay')
+        ax[2].grid()
+        ax[2].set_ylim(-5,25)
+        ax[2].set_ylabel("NS Displacement [m]")
+        ax[2].set_xlabel("Time")
+        ax[2].legend()
+        plt.suptitle(args.area_name)
+        plt.tight_layout()
+        plt.savefig(os.path.join(args.png_out_path, f'{args.area_name}_dx_dy_SBAS_mapview_region{idx}.png'), dpi=300)
+
+
+        

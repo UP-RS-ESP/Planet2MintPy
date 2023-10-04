@@ -12,7 +12,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
-
+import os
     
 def plot_network(df, color_by = "dx_iqr", vmin = 0, vmax = 1):
     if df.date0.dtype == "O":
@@ -118,3 +118,67 @@ def plot_heatmap(df):
             
         plt.tight_layout()
 
+def get_scene_id(fn):
+    
+    #extract the scene id from a PS scene filename
+    #assumes the filename still begins with the scene ID (should be default when downloading data)
+    
+    _, fn = os.path.split(fn) 
+    
+    #determine processing level of scenes
+    if "_1B_" in fn:
+        level = 1
+    elif "_3B_" in fn:
+        level = 3
+    else:
+        print("Could not determine processing level of the data. Make sure that either _1B_ or _3B_ is included in the filename of your scene.")
+        return
+    
+    if fn.split("_").index(f"{level}B") == 4: #PSB.SD case
+        scene_id = "_".join(fn.split("_")[0:4])
+    elif fn.split("_").index(f"{level}B") == 3: #PS2 case
+        scene_id = "_".join(fn.split("_")[0:3])
+    else: 
+        print("Couldn't guess the instrument type. Have you modifies filenames?")
+        return
+    return scene_id
+
+        
+def get_date(scene_id):
+    
+    #strip the time from th PS scene id
+    
+    return datetime.strptime(scene_id[0:8], "%Y%m%d")
+
+
+
+for aoi in [3,4,5,6,7,9,10]:
+    df = pd.read_csv(f"/home/ariane/Documents/Project3/PlanetScope_Data/aoi{aoi}/all_scenes/matches_by_group_PS2.csv")
+    df2 = pd.read_csv(f"/home/ariane/Documents/Project3/PlanetScope_Data/aoi{aoi}/all_scenes/matches_by_group_PSB.SD.csv")
+    
+    df = pd.concat([df, df2]).reset_index(drop = True)
+    df["id_ref"] = df.ref.apply(get_scene_id)
+    df["id_sec"] = df.sec.apply(get_scene_id)
+    df["date0"] = df.id_ref.apply(get_date)
+    df["date1"] = df.id_sec.apply(get_date)
+    
+    
+    conns = pd.concat([df.date0, df.date1]).value_counts().reset_index().rename(columns = {"index":"date", 0:"count"})
+    merge = df.merge(conns, left_on='date0', right_on='date')
+    merge = merge.merge(conns, left_on='date1', right_on='date')
+    
+    
+    fig, ax = plt.subplots(1,1, figsize = (8,5))
+    cmap = plt.get_cmap('viridis')
+    for d0, d1, c0, c1 in zip(merge.date0, merge.date1, merge.count_x, merge.count_y):
+        x_values = [d0, d1]
+        y_values = [c0, c1]
+        ax.plot(x_values, y_values, c = "royalblue")
+    ax.scatter(conns.date, conns["count"],  c = "royalblue")
+    ax.set_ylim(0, max(conns["count"])+1)
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Number of connections")
+    ax.set_title(f"aoi{aoi}")
+    plt.grid()
+    
+    plt.savefig(f"/home/ariane/Documents/Project3/connections/connections_aoi{aoi}.png", dpi = 300)
