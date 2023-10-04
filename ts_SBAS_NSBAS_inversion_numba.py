@@ -14,7 +14,6 @@ import datetime as dt
 import correlation_confidence as cc
 
 import matplotlib
-# matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from skimage import measure
 from skimage.morphology import closing, disk
@@ -23,6 +22,7 @@ import pandas as pd
 from numba import njit, prange
 from numba_progress import ProgressBar
 from scipy.signal import savgol_filter
+
 
 DESCRIPTION = """
 Run SBAS or NSBAS time series inversion on offset pixels via numpy and numba. Takes advantage of multiple cores, but requires memory. Very fast, but only useful for limited number of points (up to 1e5) and limited timesteps (up to 100).
@@ -335,6 +335,48 @@ def get_landslide_loc(dx_stack, dy_stack, ddates, threshold_angle = 45, threshol
     
     return masks
 
+
+class PixelSelector:
+    def __init__(self, image, hs = None):
+        self.image = image
+        self.hs = hs
+        self.selected_pixels = []
+        self.ravel_pixels = []
+        self.is_window_closed = False
+        
+        self.fig, self.ax = plt.subplots()
+        alpha = 1
+        if self.hs is not None: 
+            self.ax.imshow(self.hs, cmap = "Greys_r")
+            alpha = 0.8
+        
+        im = self.ax.imshow(self.image, cmap='Reds', vmin = np.nanpercentile(self.image, 2), vmax = np.nanpercentile(self.image, 98), alpha = alpha)
+        plt.colorbar(im, ax = self.ax, label = "Velocity [m/yr]")
+        # connect event handler
+        self.fig.canvas.mpl_connect('button_press_event', self.on_click)
+        self.fig.canvas.mpl_connect('close_event', self.on_close)
+        
+    def on_click(self, event):
+        # ignore clicks outside the image
+        if event.xdata is None or event.ydata is None:
+            return
+
+        x, y = int(round(event.xdata)), int(round(event.ydata))
+        print(f"Selected pixel: ({x}, {y})")
+        self.ax.scatter(x, y, marker = "x", color = "royalblue")
+        self.selected_pixels.append((x, y))
+        # calculate the pixel position in raveled array
+        self.ravel_pixels.append(y*self.image.shape[1]+x)
+        
+    def on_close(self, event):
+        self.is_window_closed = True
+    
+    def select_pixels(self):
+        plt.show(block=False)
+        while not self.is_window_closed:
+            plt.pause(0.1)
+        
+
 def cmdLineParser():
     from argparse import RawTextHelpFormatter
     parser = argparse.ArgumentParser(description=DESCRIPTION, formatter_class=RawTextHelpFormatter)
@@ -353,7 +395,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='')
     args = parser.parse_args()
     args.png_out_path = 'png'
-    args.area_name = "aoi9"
+    args.area_name = "aoi5"
     args.npy_out_path = 'npy'
     args.png_out_path = 'png'
 
@@ -419,23 +461,38 @@ if __name__ == '__main__':
     print('Creating mask data')
 
     # masks = get_landslide_loc(dx_stack, dy_stack, ddates, pad = 20, where = "highest_vel", threshold_size = 5000)   
-    masks = get_landslide_loc(dx_stack, dy_stack, ddates, pad = 20, where = "all", threshold_size = 5000, threshold_angle = 45)   
+    #zmasks = get_landslide_loc(dx_stack, dy_stack, ddates, pad = 20, where = "all", threshold_size = 5000, threshold_angle = 45)   
     
-    #get mean vel (just for plotting)
+    #get mean vel 
     res = 3
     v = np.zeros(dx_stack.shape)
     for i in range(len(ddates)):
         v[i,:,:] = (np.sqrt((dx_stack[i]**2+dy_stack[i]**2))*res)/ddates[i].days*365
+        
+        
+    hs = None
+    #get hillshade (just for plotting)
+    if os.path.isfile(demname):
+        cmd = f"gdaldem hillshade {demname} {demname[:-4]}_HS.tif"
+        os.system(cmd)
+        hs = read_file(f"{demname[:-4]}_HS.tif")
 
     v = cc.nanmean_numba(v)
     
-    for idx in range(masks.shape[0]):
-        mask = masks[idx,:,:]
-        # Extract values only for masked areas
-        print('Extract relevant values and remove full array from memory')
-        idxxy = np.where(mask.ravel() == 1)[0]
+    #allow user to select pixels
+    selector = PixelSelector(v, hs)
+    selector.select_pixels()
+    # for idx in range(masks.shape[0]):
+    #     mask = masks[idx,:,:]
+    #     # Extract values only for masked areas
+    #     print('Extract relevant values and remove full array from memory')
+    #     idxxy = np.where(mask.ravel() == 1)[0]
+    for idx in range(len(selector.selected_pixels)):
+        print(f"Running inversion for pixel {selector.selected_pixels[idx]}")
+        idxxy = selector.ravel_pixels[idx]
         num_ifgram = dx_stack.shape[0]
-        nre = int(len(idxxy))
+        #nre = int(len(idxxy))
+        nre = 1
         dx_stack_masked = np.empty((num_ifgram, nre), dtype=np.float32)
         dx_stack_masked.fill(np.nan)
         dy_stack_masked = np.empty((num_ifgram, nre), dtype=np.float32)
@@ -653,19 +710,19 @@ if __name__ == '__main__':
      
         ## Create map view of r2 from residual estimation for every pixel
         # take r2 values for all masked pixels and turn into map view
-        dx_r2_SBAS_noweights_map = np.zeros_like(mask, dtype=np.float32)
+        dx_r2_SBAS_noweights_map = np.zeros_like(v, dtype=np.float32)
         dx_r2_SBAS_noweights_map.fill(np.nan)
         dx_r2_SBAS_noweights_map.ravel()[idxxy] = dx_r2_SBAS_noweights
 
-        dy_r2_SBAS_noweights_map = np.zeros_like(mask, dtype=np.float32)
+        dy_r2_SBAS_noweights_map = np.zeros_like(v, dtype=np.float32)
         dy_r2_SBAS_noweights_map.fill(np.nan)
         dy_r2_SBAS_noweights_map.ravel()[idxxy] = dy_r2_SBAS_noweights
 
-        dx_r2_NSBAS_noweights_map = np.zeros_like(mask, dtype=np.float32)
+        dx_r2_NSBAS_noweights_map = np.zeros_like(v, dtype=np.float32)
         dx_r2_NSBAS_noweights_map.fill(np.nan)
         dx_r2_NSBAS_noweights_map.ravel()[idxxy] = dx_r2_NSBAS_noweights
 
-        dy_r2_NSBAS_noweights_map = np.zeros_like(mask, dtype=np.float32)
+        dy_r2_NSBAS_noweights_map = np.zeros_like(v, dtype=np.float32)
         dy_r2_NSBAS_noweights_map.fill(np.nan)
         dy_r2_NSBAS_noweights_map.ravel()[idxxy] = dy_r2_NSBAS_noweights
 
@@ -723,43 +780,42 @@ if __name__ == '__main__':
         #     f = gzip.GzipFile(dy_ts_rweights2_numba_fn, "w")
         #     np.save(file=f, arr=dy_ts_rweights2_numba)
         #     f.close()
-        #     f = None
-        
+        #     f = None        
         
         #map plotting
         
-        cmd = f"gdaldem hillshade {demname} {demname[:-4]}_HS.tif"
-        os.system(cmd)
+        # cmd = f"gdaldem hillshade {demname} {demname[:-4]}_HS.tif"
+        # os.system(cmd)
         
-        hs = read_file(f"{demname[:-4]}_HS.tif")
-        vplot = v.copy()
-        vplot[mask == 0] = np.nan
-        unique_dates = np.union1d(np.unique(dates0), np.unique(dates1))
-        xeval_dates = [min(unique_dates) + dt.timedelta(days = x*365.25) for x in xeval]
+        # hs = read_file(f"{demname[:-4]}_HS.tif")
+        # vplot = v.copy()
+        # vplot[mask == 0] = np.nan
+        # unique_dates = np.union1d(np.unique(dates0), np.unique(dates1))
+        # xeval_dates = [min(unique_dates) + dt.timedelta(days = x*365.25) for x in xeval]
         
-        fig, ax = plt.subplots(1,3, figsize = (18,5))     
-        ax[0].imshow(hs, cmap = "Greys_r")
-        p = ax[0].imshow(vplot, cmap = "Reds", vmin = 0, vmax = 10, alpha = 0.8)
-        plt.colorbar(p, ax = ax[0], label = "Velocity [m/yr]")
-        ax[1].axhline(c = "gray", ls = "--")
-        ax[1].plot(unique_dates, np.nanmean(dx_ts_SBAS_noweights, axis=1)*res, '-', lw=1, color='firebrick', label='SBAS')
-        ax[1].plot(xeval_dates, np.nanmean(dx_ts_SBAS_noweights_sg, axis=1)*res, '-x', ms=2, lw=1, color='indigo', label='SBAS Savitzky-Golay')
-        ax[1].grid()
-        ax[1].set_ylim(-5,25)
-        ax[1].set_ylabel("EW Displacement [m]")
-        ax[1].set_xlabel("Time")
-        ax[1].legend()
-        ax[2].axhline(c = "gray", ls = "--")
-        ax[2].plot(unique_dates, np.nanmean(dy_ts_SBAS_noweights, axis=1)*res, '-', lw=1, color='firebrick', label='SBAS')
-        ax[2].plot(xeval_dates, np.nanmean(dy_ts_SBAS_noweights_sg, axis=1)*res, '-x', ms=2, lw=1.2, color='indigo', label='SBAS Savitzky-Golay')
-        ax[2].grid()
-        ax[2].set_ylim(-5,25)
-        ax[2].set_ylabel("NS Displacement [m]")
-        ax[2].set_xlabel("Time")
-        ax[2].legend()
-        plt.suptitle(args.area_name)
-        plt.tight_layout()
-        plt.savefig(os.path.join(args.png_out_path, f'{args.area_name}_dx_dy_SBAS_mapview_region{idx}.png'), dpi=300)
+        # fig, ax = plt.subplots(1,3, figsize = (18,5))     
+        # ax[0].imshow(hs, cmap = "Greys_r")
+        # p = ax[0].imshow(vplot, cmap = "Reds", vmin = 0, vmax = 10, alpha = 0.8)
+        # plt.colorbar(p, ax = ax[0], label = "Velocity [m/yr]")
+        # ax[1].axhline(c = "gray", ls = "--")
+        # ax[1].plot(unique_dates, np.nanmean(dx_ts_SBAS_noweights, axis=1)*res, '-', lw=1, color='firebrick', label='SBAS')
+        # ax[1].plot(xeval_dates, np.nanmean(dx_ts_SBAS_noweights_sg, axis=1)*res, '-x', ms=2, lw=1, color='indigo', label='SBAS Savitzky-Golay')
+        # ax[1].grid()
+        # ax[1].set_ylim(-5,25)
+        # ax[1].set_ylabel("EW Displacement [m]")
+        # ax[1].set_xlabel("Time")
+        # ax[1].legend()
+        # ax[2].axhline(c = "gray", ls = "--")
+        # ax[2].plot(unique_dates, np.nanmean(dy_ts_SBAS_noweights, axis=1)*res, '-', lw=1, color='firebrick', label='SBAS')
+        # ax[2].plot(xeval_dates, np.nanmean(dy_ts_SBAS_noweights_sg, axis=1)*res, '-x', ms=2, lw=1.2, color='indigo', label='SBAS Savitzky-Golay')
+        # ax[2].grid()
+        # ax[2].set_ylim(-5,25)
+        # ax[2].set_ylabel("NS Displacement [m]")
+        # ax[2].set_xlabel("Time")
+        # ax[2].legend()
+        # plt.suptitle(args.area_name)
+        # plt.tight_layout()
+        #plt.savefig(os.path.join(args.png_out_path, f'{args.area_name}_dx_dy_SBAS_mapview_region{idx}.png'), dpi=300)
 
 
         
