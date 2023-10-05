@@ -326,12 +326,12 @@ def get_landslide_loc(dx_stack, dy_stack, ddates, threshold_angle = 45, threshol
             mask[int(pt[0])-pad:int(pt[0])+pad+1, int(pt[1])-pad:int(pt[1])+pad+1] = 1
             masks[i,:,:] = mask
 
-    plt.figure()
-    plt.imshow(directions_sd, vmin = 0, vmax = 90, cmap = "Reds_r")
-    plt.colorbar()
-    masks_sum = np.sum(masks, axis = 0)
-    masks_sum[masks_sum == 0] = np.nan
-    plt.imshow(masks_sum, alpha = 0.6, cmap = "Blues_r")
+    # plt.figure()
+    # plt.imshow(directions_sd, vmin = 0, vmax = 90, cmap = "Reds_r")
+    # plt.colorbar()
+    # masks_sum = np.sum(masks, axis = 0)
+    # masks_sum[masks_sum == 0] = np.nan
+    # plt.imshow(masks_sum, alpha = 0.6, cmap = "Blues_r")
     
     return masks
 
@@ -395,7 +395,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='')
     args = parser.parse_args()
     args.png_out_path = 'png'
-    args.area_name = "aoi5"
+    args.area_name = "aoi6"
     args.npy_out_path = 'npy'
     args.png_out_path = 'png'
 
@@ -478,7 +478,9 @@ if __name__ == '__main__':
         hs = read_file(f"{demname[:-4]}_HS.tif")
 
     v = cc.nanmean_numba(v)
-    
+    masks = get_landslide_loc(dx_stack, dy_stack, ddates, where = "all", threshold_size = 5000, threshold_angle = 50)   
+    v[masks.sum(axis = 0) == 0] = np.nan
+    #%%
     #allow user to select pixels
     selector = PixelSelector(v, hs)
     selector.select_pixels()
@@ -487,6 +489,17 @@ if __name__ == '__main__':
     #     # Extract values only for masked areas
     #     print('Extract relevant values and remove full array from memory')
     #     idxxy = np.where(mask.ravel() == 1)[0]
+    
+    
+    fig, ax = plt.subplots(1,3, figsize = (20, 5))
+    ax[0].imshow(hs, cmap = "Greys_r")
+    ax[1].axhline(c = "gray", ls = "--")
+    ax[2].axhline(c = "gray", ls = "--")
+
+    
+    cmap = plt.get_cmap('viridis')  # You can replace 'viridis' with any other available colormap
+    colors = [cmap(i/len(selector.selected_pixels)) for i in range(len(selector.selected_pixels))]
+    
     for idx in range(len(selector.selected_pixels)):
         print(f"Running inversion for pixel {selector.selected_pixels[idx]}")
         idxxy = selector.ravel_pixels[idx]
@@ -552,11 +565,11 @@ if __name__ == '__main__':
 
         for i in range(len(dates0_unique)):
             #find corresponding pairs for each date in date0
-            idx, = np.where(dates0_unique[i] == dates0)
-            dx_residualdates_SSE_SBAS_noweights[i, :] = np.nansum(dx_residualdates_SBAS_noweights[idx,:]**2, axis=0)
-            dy_residualdates_SSE_SBAS_noweights[i, :] = np.nansum(dy_residualdates_SBAS_noweights[idx,:]**2, axis=0)
-            dx_residualdates_SSE_median_SBAS_noweights[i, :] = np.nanmedian(dx_residualdates_SBAS_noweights[idx,:]**2, axis=0)
-            dy_residualdates_SSE_median_SBAS_noweights[i, :] = np.nanmedian(dy_residualdates_SBAS_noweights[idx,:]**2, axis=0)
+            j, = np.where(dates0_unique[i] == dates0)
+            dx_residualdates_SSE_SBAS_noweights[i, :] = np.nansum(dx_residualdates_SBAS_noweights[j,:]**2, axis=0)
+            dy_residualdates_SSE_SBAS_noweights[i, :] = np.nansum(dy_residualdates_SBAS_noweights[j,:]**2, axis=0)
+            dx_residualdates_SSE_median_SBAS_noweights[i, :] = np.nanmedian(dx_residualdates_SBAS_noweights[j,:]**2, axis=0)
+            dy_residualdates_SSE_median_SBAS_noweights[i, :] = np.nanmedian(dy_residualdates_SBAS_noweights[j,:]**2, axis=0)
             dx_dy_residual_SBAS_nrdates[i] = len(dx_residualdates_SBAS_noweights[idx,:])
 
 
@@ -639,110 +652,121 @@ if __name__ == '__main__':
 
         for i in range(len(dates0_unique)):
             #find corresponding pairs for each date in date0
-            idx, = np.where(dates0_unique[i] == dates0)
-            dx_residualdates_SSE_NSBAS_noweights[i, :] = np.nansum(dx_residualdates_NSBAS_noweights[idx,:]**2, axis=0)
-            dy_residualdates_SSE_NSBAS_noweights[i, :] = np.nansum(dy_residualdates_NSBAS_noweights[idx,:]**2, axis=0)
+            j, = np.where(dates0_unique[i] == dates0)
+            dx_residualdates_SSE_NSBAS_noweights[i, :] = np.nansum(dx_residualdates_NSBAS_noweights[j,:]**2, axis=0)
+            dy_residualdates_SSE_NSBAS_noweights[i, :] = np.nansum(dy_residualdates_NSBAS_noweights[j,:]**2, axis=0)
             #need to check for values that are all NaN
             #if np.all(np.isnan(dx_residualdates_NSBAS_noweights[idx,:]))
-            dx_residualdates_SSE_median_NSBAS_noweights[i, :] = np.nanmedian(dx_residualdates_NSBAS_noweights[idx,:]**2, axis=0)
-            dy_residualdates_SSE_median_NSBAS_noweights[i, :] = np.nanmedian(dy_residualdates_NSBAS_noweights[idx,:]**2, axis=0)
-            dx_dy_residual_NSBAS_nrdates[i] = len(dx_residualdates_NSBAS_noweights[idx,:])
+            dx_residualdates_SSE_median_NSBAS_noweights[i, :] = np.nanmedian(dx_residualdates_NSBAS_noweights[j,:]**2, axis=0)
+            dy_residualdates_SSE_median_NSBAS_noweights[i, :] = np.nanmedian(dy_residualdates_NSBAS_noweights[j,:]**2, axis=0)
+            dx_dy_residual_NSBAS_nrdates[i] = len(dx_residualdates_NSBAS_noweights[j,:])
+            
+            
+        unique_dates = np.union1d(np.unique(dates0), np.unique(dates1))
+        xeval_dates = [min(unique_dates) + dt.timedelta(days = x*365.25) for x in xeval]
+        ax[0].scatter(*selector.selected_pixels[idx], c = colors[idx], marker = "X")
+        
+        ax[1].plot(unique_dates, np.nanmean(dx_ts_SBAS_noweights, axis=1)*res, '--', lw=0.5, color=colors[idx], label='SBAS')
+        ax[1].plot(xeval_dates, np.nanmean(dx_ts_SBAS_noweights_sg, axis=1)*res, '-x', ms=2, lw=1.2, color=colors[idx], label='SBAS Savitzky-Golay')
+        ax[2].plot(unique_dates, np.nanmean(dy_ts_SBAS_noweights, axis=1)*res, '--', lw=0.5, color=colors[idx], label='SBAS')
+        ax[2].plot(xeval_dates, np.nanmean(dy_ts_SBAS_noweights_sg, axis=1)*res, '-x', ms=2, lw=1.2, color=colors[idx], label='SBAS Savitzky-Golay')
+ 
+        
+        # fig, ax = plt.subplots(2, 1, figsize=(12,5))
+        # im0 = ax[0].scatter(dates0_unique, np.nanmedian(dx_residualdates_SSE_median_NSBAS_noweights, axis=1), s=10, c=dx_dy_residual_NSBAS_nrdates, marker='o', linestyle='-', label='NSBAS')
+        # im1 = ax[0].scatter(dates0_unique, np.nanmedian(dx_residualdates_SSE_median_SBAS_noweights, axis=1), s=10, c=dx_dy_residual_SBAS_nrdates, marker='s', linestyle='-', label='SBAS')
+        # ax[0].set_title('Median of all pixels: Sum of squared residuals (n=%d) for %d dates'%(nre, len(dates0_unique)), fontsize=14)
+        # ax[0].set_xlabel('Date')
+        # ax[0].set_ylabel('Median of sum of squared residuals dx [pix]')
+        # ax[0].set_yscale('log')
+        # ax[0].legend()
+        # ax[0].grid()
+        # ax[1].plot(dates0_unique, np.nanmedian(dy_residualdates_SSE_median_NSBAS_noweights, axis=1), '-', color='darkblue', label='NSBAS')
+        # ax[1].plot(dates0_unique, np.nanmedian(dy_residualdates_SSE_median_SBAS_noweights, axis=1), '-', color='firebrick', label='SBAS')
+        # ax[1].set_title('Median of all pixels: Sum of squared residuals (n=%d) for %d dates'%(nre, len(dates0_unique)), fontsize=14)
+        # ax[1].set_xlabel('Date')
+        # ax[1].set_ylabel('Median of sum of squared residuals dy [pix]')
+        # ax[1].set_yscale('log')
+        # ax[1].legend()
+        # ax[1].grid()
+        # fig.tight_layout()
+        # fig.savefig(os.path.join(args.png_out_path, f'{args.area_name}_dx_dy_SBAS_NSBAS_SSE{idx}.png'), dpi=300)
 
-        fig, ax = plt.subplots(2, 1, figsize=(12,5))
-        im0 = ax[0].scatter(dates0_unique, np.nanmedian(dx_residualdates_SSE_median_NSBAS_noweights, axis=1), s=10, c=dx_dy_residual_NSBAS_nrdates, marker='o', linestyle='-', label='NSBAS')
-        im1 = ax[0].scatter(dates0_unique, np.nanmedian(dx_residualdates_SSE_median_SBAS_noweights, axis=1), s=10, c=dx_dy_residual_SBAS_nrdates, marker='s', linestyle='-', label='SBAS')
-        ax[0].set_title('Median of all pixels: Sum of squared residuals (n=%d) for %d dates'%(nre, len(dates0_unique)), fontsize=14)
-        ax[0].set_xlabel('Date')
-        ax[0].set_ylabel('Median of sum of squared residuals dx [pix]')
-        ax[0].set_yscale('log')
-        ax[0].legend()
-        ax[0].grid()
-        ax[1].plot(dates0_unique, np.nanmedian(dy_residualdates_SSE_median_NSBAS_noweights, axis=1), '-', color='darkblue', label='NSBAS')
-        ax[1].plot(dates0_unique, np.nanmedian(dy_residualdates_SSE_median_SBAS_noweights, axis=1), '-', color='firebrick', label='SBAS')
-        ax[1].set_title('Median of all pixels: Sum of squared residuals (n=%d) for %d dates'%(nre, len(dates0_unique)), fontsize=14)
-        ax[1].set_xlabel('Date')
-        ax[1].set_ylabel('Median of sum of squared residuals dy [pix]')
-        ax[1].set_yscale('log')
-        ax[1].legend()
-        ax[1].grid()
-        fig.tight_layout()
-        fig.savefig(os.path.join(args.png_out_path, f'{args.area_name}_dx_dy_SBAS_NSBAS_SSE{idx}.png'), dpi=300)
-
-        fig, ax = plt.subplots(2, 2, figsize=(12,5))
-        ax[0,0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_NSBAS_noweights, axis=1), '-', color='darkblue', label='NSBAS')
-        ax[0,0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_SBAS_noweights, axis=1), '-', color='firebrick', label='SBAS')
-        ax[0,0].set_title('Unsmoothed mean dx offset (n=%d)'%nre, fontsize=14)
-        ax[0,0].set_xlabel('Time [y]')
-        ax[0,0].set_ylabel('Cumulative dx offset [pix]')
-        ax[0,0].legend()
-        ax[0,0].grid()
-        ax[0,1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_NSBAS_noweights, axis=1), '-', color='darkblue', label='NSBAS')
-        ax[0,1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_SBAS_noweights, axis=1), '-', color='firebrick', label='SBAS')
-        ax[0,1].set_title('Unsmoothed mean dy offset (n=%d)'%nre, fontsize=14)
-        ax[0,1].set_xlabel('Time [y]')
-        ax[0,1].set_ylabel('Cumulative dy offset [pix]')
-        ax[0,1].legend()
-        ax[0,1].grid()
-        ax[1,0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_NSBAS_noweights, axis=1), '-', lw=0.5, color='darkblue', label='NSBAS')
-        ax[1,0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_SBAS_noweights, axis=1), '-', lw=0.5, color='firebrick', label='SBAS')
-        ax[1,0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_SBAS_noweights_mv, axis=1), '-', lw=1, color='firebrick', label='SBAS moving average')
-        ax[1,0].plot(xeval, np.nanmean(dx_ts_SBAS_noweights_gss, axis=1), '-o', ms=2, lw=1, color='firebrick', label='SBAS gaussian smoothing')
-        ax[1,0].plot(xeval, np.nanmean(dx_ts_SBAS_noweights_sg, axis=1), '-x', ms=2, lw=1, color='pink', label='SBAS Savitzky-Golay')
-        ax[1,0].set_title('Smoothed Mean dx offset (n=%d)'%nre, fontsize=14)
-        ax[1,0].set_xlabel('Time [y]')
-        ax[1,0].set_ylabel('Cumulative dx offset [pix]')
-        ax[1,0].legend()
-        ax[1,0].grid()
-        ax[1,1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_NSBAS_noweights, axis=1), '-', lw=0.5, color='darkblue', label='NSBAS')
-        ax[1,1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_SBAS_noweights, axis=1), '-', lw=0.5, color='firebrick', label='SBAS')
-        ax[1,1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_SBAS_noweights_mv, axis=1), '-', lw=1, color='firebrick', label='SBAS moving average')
-        ax[1,1].plot(xeval, np.nanmean(dy_ts_SBAS_noweights_gss, axis=1), '-o', ms=2, lw=1, color='firebrick', label='SBAS gaussian smoothing')
-        ax[1,1].plot(xeval, np.nanmean(dy_ts_SBAS_noweights_sg, axis=1), '-x', ms=2, lw=1, color='pink', label='SBAS Savitzky-Golay')
-        ax[1,1].set_title('Smoothed Mean dy offset (n=%d)'%nre, fontsize=14)
-        ax[1,1].set_xlabel('Time [y]')
-        ax[1,1].set_ylabel('Cumulative dy offset [pix]')
-        ax[1,1].legend()
-        ax[1,1].grid()
-        fig.tight_layout()
-        fig.savefig(os.path.join(args.png_out_path, f'{args.area_name}_dx_dy_SBAS_NSBAS_inversion_region{idx}.png'), dpi=300)
+        # fig, ax = plt.subplots(2, 2, figsize=(12,5))
+        # ax[0,0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_NSBAS_noweights, axis=1), '-', color='darkblue', label='NSBAS')
+        # ax[0,0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_SBAS_noweights, axis=1), '-', color='firebrick', label='SBAS')
+        # ax[0,0].set_title('Unsmoothed mean dx offset (n=%d)'%nre, fontsize=14)
+        # ax[0,0].set_xlabel('Time [y]')
+        # ax[0,0].set_ylabel('Cumulative dx offset [pix]')
+        # ax[0,0].legend()
+        # ax[0,0].grid()
+        # ax[0,1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_NSBAS_noweights, axis=1), '-', color='darkblue', label='NSBAS')
+        # ax[0,1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_SBAS_noweights, axis=1), '-', color='firebrick', label='SBAS')
+        # ax[0,1].set_title('Unsmoothed mean dy offset (n=%d)'%nre, fontsize=14)
+        # ax[0,1].set_xlabel('Time [y]')
+        # ax[0,1].set_ylabel('Cumulative dy offset [pix]')
+        # ax[0,1].legend()
+        # ax[0,1].grid()
+        # ax[1,0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_NSBAS_noweights, axis=1), '-', lw=0.5, color='darkblue', label='NSBAS')
+        # ax[1,0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_SBAS_noweights, axis=1), '-', lw=0.5, color='firebrick', label='SBAS')
+        # ax[1,0].plot(np.cumsum(tbase_diff2), np.nanmean(dx_ts_SBAS_noweights_mv, axis=1), '-', lw=1, color='firebrick', label='SBAS moving average')
+        # ax[1,0].plot(xeval, np.nanmean(dx_ts_SBAS_noweights_gss, axis=1), '-o', ms=2, lw=1, color='firebrick', label='SBAS gaussian smoothing')
+        # ax[1,0].plot(xeval, np.nanmean(dx_ts_SBAS_noweights_sg, axis=1), '-x', ms=2, lw=1, color='pink', label='SBAS Savitzky-Golay')
+        # ax[1,0].set_title('Smoothed Mean dx offset (n=%d)'%nre, fontsize=14)
+        # ax[1,0].set_xlabel('Time [y]')
+        # ax[1,0].set_ylabel('Cumulative dx offset [pix]')
+        # ax[1,0].legend()
+        # ax[1,0].grid()
+        # ax[1,1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_NSBAS_noweights, axis=1), '-', lw=0.5, color='darkblue', label='NSBAS')
+        # ax[1,1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_SBAS_noweights, axis=1), '-', lw=0.5, color='firebrick', label='SBAS')
+        # ax[1,1].plot(np.cumsum(tbase_diff2), np.nanmean(dy_ts_SBAS_noweights_mv, axis=1), '-', lw=1, color='firebrick', label='SBAS moving average')
+        # ax[1,1].plot(xeval, np.nanmean(dy_ts_SBAS_noweights_gss, axis=1), '-o', ms=2, lw=1, color='firebrick', label='SBAS gaussian smoothing')
+        # ax[1,1].plot(xeval, np.nanmean(dy_ts_SBAS_noweights_sg, axis=1), '-x', ms=2, lw=1, color='pink', label='SBAS Savitzky-Golay')
+        # ax[1,1].set_title('Smoothed Mean dy offset (n=%d)'%nre, fontsize=14)
+        # ax[1,1].set_xlabel('Time [y]')
+        # ax[1,1].set_ylabel('Cumulative dy offset [pix]')
+        # ax[1,1].legend()
+        # ax[1,1].grid()
+        # fig.tight_layout()
+        # fig.savefig(os.path.join(args.png_out_path, f'{args.area_name}_dx_dy_SBAS_NSBAS_inversion_region{idx}.png'), dpi=300)
         # fig.savefig(os.path.join(args.png_out_path, f'{args.area_name}_dx_dy_SBAS_NSBAS_inversion_comparison.png'), dpi=300)
 
      
         ## Create map view of r2 from residual estimation for every pixel
         # take r2 values for all masked pixels and turn into map view
-        dx_r2_SBAS_noweights_map = np.zeros_like(v, dtype=np.float32)
-        dx_r2_SBAS_noweights_map.fill(np.nan)
-        dx_r2_SBAS_noweights_map.ravel()[idxxy] = dx_r2_SBAS_noweights
+        # dx_r2_SBAS_noweights_map = np.zeros_like(v, dtype=np.float32)
+        # dx_r2_SBAS_noweights_map.fill(np.nan)
+        # dx_r2_SBAS_noweights_map.ravel()[idxxy] = dx_r2_SBAS_noweights
 
-        dy_r2_SBAS_noweights_map = np.zeros_like(v, dtype=np.float32)
-        dy_r2_SBAS_noweights_map.fill(np.nan)
-        dy_r2_SBAS_noweights_map.ravel()[idxxy] = dy_r2_SBAS_noweights
+        # dy_r2_SBAS_noweights_map = np.zeros_like(v, dtype=np.float32)
+        # dy_r2_SBAS_noweights_map.fill(np.nan)
+        # dy_r2_SBAS_noweights_map.ravel()[idxxy] = dy_r2_SBAS_noweights
 
-        dx_r2_NSBAS_noweights_map = np.zeros_like(v, dtype=np.float32)
-        dx_r2_NSBAS_noweights_map.fill(np.nan)
-        dx_r2_NSBAS_noweights_map.ravel()[idxxy] = dx_r2_NSBAS_noweights
+        # dx_r2_NSBAS_noweights_map = np.zeros_like(v, dtype=np.float32)
+        # dx_r2_NSBAS_noweights_map.fill(np.nan)
+        # dx_r2_NSBAS_noweights_map.ravel()[idxxy] = dx_r2_NSBAS_noweights
 
-        dy_r2_NSBAS_noweights_map = np.zeros_like(v, dtype=np.float32)
-        dy_r2_NSBAS_noweights_map.fill(np.nan)
-        dy_r2_NSBAS_noweights_map.ravel()[idxxy] = dy_r2_NSBAS_noweights
+        # dy_r2_NSBAS_noweights_map = np.zeros_like(v, dtype=np.float32)
+        # dy_r2_NSBAS_noweights_map.fill(np.nan)
+        # dy_r2_NSBAS_noweights_map.ravel()[idxxy] = dy_r2_NSBAS_noweights
 
-        fig, ax = plt.subplots(2, 2, figsize=(12,8))
-        vmin = 0.7
-        vmax = 1
-        im0 = ax[0,0].imshow(dx_r2_SBAS_noweights_map, cmap='viridis', vmin=vmin, vmax=vmax)
-        ax[0,0].set_title('R2 of SBAS dx', fontsize=14)
-        im1 = ax[0,1].imshow(dy_r2_SBAS_noweights_map, cmap='viridis', vmin=vmin, vmax=vmax)
-        ax[0,1].set_title('R2 of SBAS dy', fontsize=14)
-        im2 = ax[1,0].imshow(dx_r2_NSBAS_noweights_map, cmap='viridis', vmin=vmin, vmax=vmax)
-        ax[1,0].set_title('R2 of NSBAS dx', fontsize=14)
-        im3 = ax[1,1].imshow(dy_r2_NSBAS_noweights_map, cmap='viridis', vmin=vmin, vmax=vmax)
-        ax[1,1].set_title('R2 of NSBAS dy', fontsize=14)
-        # fig.colorbar(im0, ax=ax.ravel().tolist())
-        fig.subplots_adjust(right=0.8)
-        cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
-        fig.colorbar(im0, cax=cbar_ax)
-        # fig.tight_layout()
-        fig.savefig(os.path.join(args.png_out_path, f'{args.area_name}_dx_dy_SBAS_NSBAS_r2_mapview_region{idx}.png'), dpi=300)
+        # fig, ax = plt.subplots(2, 2, figsize=(12,8))
+        # vmin = 0.7
+        # vmax = 1
+        # im0 = ax[0,0].imshow(dx_r2_SBAS_noweights_map, cmap='viridis', vmin=vmin, vmax=vmax)
+        # ax[0,0].set_title('R2 of SBAS dx', fontsize=14)
+        # im1 = ax[0,1].imshow(dy_r2_SBAS_noweights_map, cmap='viridis', vmin=vmin, vmax=vmax)
+        # ax[0,1].set_title('R2 of SBAS dy', fontsize=14)
+        # im2 = ax[1,0].imshow(dx_r2_NSBAS_noweights_map, cmap='viridis', vmin=vmin, vmax=vmax)
+        # ax[1,0].set_title('R2 of NSBAS dx', fontsize=14)
+        # im3 = ax[1,1].imshow(dy_r2_NSBAS_noweights_map, cmap='viridis', vmin=vmin, vmax=vmax)
+        # ax[1,1].set_title('R2 of NSBAS dy', fontsize=14)
+        # # fig.colorbar(im0, ax=ax.ravel().tolist())
+        # fig.subplots_adjust(right=0.8)
+        # cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+        # fig.colorbar(im0, cax=cbar_ax)
+        # # fig.tight_layout()
+        # fig.savefig(os.path.join(args.png_out_path, f'{args.area_name}_dx_dy_SBAS_NSBAS_r2_mapview_region{idx}.png'), dpi=300)
 
         # # Export inverted ts to npy files
         # if os.path.exists(dx_ts_tweights_numba_fn) is False:
@@ -782,40 +806,22 @@ if __name__ == '__main__':
         #     f.close()
         #     f = None        
         
-        #map plotting
-        
-        # cmd = f"gdaldem hillshade {demname} {demname[:-4]}_HS.tif"
-        # os.system(cmd)
-        
-        # hs = read_file(f"{demname[:-4]}_HS.tif")
-        # vplot = v.copy()
-        # vplot[mask == 0] = np.nan
-        # unique_dates = np.union1d(np.unique(dates0), np.unique(dates1))
-        # xeval_dates = [min(unique_dates) + dt.timedelta(days = x*365.25) for x in xeval]
-        
-        # fig, ax = plt.subplots(1,3, figsize = (18,5))     
-        # ax[0].imshow(hs, cmap = "Greys_r")
-        # p = ax[0].imshow(vplot, cmap = "Reds", vmin = 0, vmax = 10, alpha = 0.8)
-        # plt.colorbar(p, ax = ax[0], label = "Velocity [m/yr]")
-        # ax[1].axhline(c = "gray", ls = "--")
-        # ax[1].plot(unique_dates, np.nanmean(dx_ts_SBAS_noweights, axis=1)*res, '-', lw=1, color='firebrick', label='SBAS')
-        # ax[1].plot(xeval_dates, np.nanmean(dx_ts_SBAS_noweights_sg, axis=1)*res, '-x', ms=2, lw=1, color='indigo', label='SBAS Savitzky-Golay')
-        # ax[1].grid()
+   
+
+
+        #TODO: need to implement NAN catcher
+        ax[1].grid()
         # ax[1].set_ylim(-5,25)
-        # ax[1].set_ylabel("EW Displacement [m]")
-        # ax[1].set_xlabel("Time")
-        # ax[1].legend()
-        # ax[2].axhline(c = "gray", ls = "--")
-        # ax[2].plot(unique_dates, np.nanmean(dy_ts_SBAS_noweights, axis=1)*res, '-', lw=1, color='firebrick', label='SBAS')
-        # ax[2].plot(xeval_dates, np.nanmean(dy_ts_SBAS_noweights_sg, axis=1)*res, '-x', ms=2, lw=1.2, color='indigo', label='SBAS Savitzky-Golay')
-        # ax[2].grid()
+        ax[1].set_ylabel("EW Displacement [m]")
+        ax[1].set_xlabel("Time")
+        ax[2].grid()
         # ax[2].set_ylim(-5,25)
-        # ax[2].set_ylabel("NS Displacement [m]")
-        # ax[2].set_xlabel("Time")
+        ax[2].set_ylabel("NS Displacement [m]")
+        ax[2].set_xlabel("Time")
         # ax[2].legend()
-        # plt.suptitle(args.area_name)
-        # plt.tight_layout()
-        #plt.savefig(os.path.join(args.png_out_path, f'{args.area_name}_dx_dy_SBAS_mapview_region{idx}.png'), dpi=300)
+        plt.suptitle(args.area_name)
+        plt.tight_layout()
+        plt.savefig(os.path.join(args.png_out_path, f'{args.area_name}_dx_dy_SBAS_selected_pixels.png'), dpi=300)
 
 
         
